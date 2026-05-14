@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { Monitor } from '../db/schema'
 import { msgTimeoutAfter } from '../notifications/messages'
+import jp from 'jsonpath'
 
 export interface CheckResult {
   status: 'up' | 'down'
@@ -67,6 +68,26 @@ export async function checkHttp(monitor: Monitor, locale = 'en'): Promise<CheckR
 
     const expectedStatus = monitor.expectedStatus || 200
     if (response.status === expectedStatus) {
+      if (monitor.jsonPath) {
+        try {
+          const bodyText = await response.text()
+          const jsonData = JSON.parse(bodyText)
+          const matched = jp.query(jsonData, monitor.jsonPath)
+
+          if (matched.length === 0) {
+            return { status: 'down', statusCode: response.status, responseTimeMs, message: `JSON query '${monitor.jsonPath}' not found` }
+          }
+
+          if (monitor.expectedValue !== null && monitor.expectedValue !== undefined) {
+            const firstMatch = String(matched[0])
+            if (firstMatch !== String(monitor.expectedValue)) {
+              return { status: 'down', statusCode: response.status, responseTimeMs, message: `JSON value '${firstMatch}' != expected '${monitor.expectedValue}'` }
+            }
+          }
+        } catch (e) {
+          return { status: 'down', statusCode: response.status, responseTimeMs, message: `Failed to parse JSON for query: ${String(e)}` }
+        }
+      }
       return { status: 'up', statusCode: response.status, responseTimeMs, message: `HTTP ${response.status}` }
     }
     return { status: 'down', statusCode: response.status, responseTimeMs, message: `HTTP ${response.status} (expected ${expectedStatus})` }

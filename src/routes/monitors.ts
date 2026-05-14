@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
-import { getDb, monitors, heartbeatTokens, alertState, monitorNotifications, statusLogs, incidents } from '../db'
+import { getDb, monitors, heartbeatTokens, alertState, monitorNotifications, statusLogs, incidents, maintenanceWindows } from '../db'
 import { requireAuth } from '../middleware/auth'
 import type { Env } from '../index'
 
@@ -56,6 +56,8 @@ router.post('/', async (c) => {
     surgeProtectionLimit: body.surgeProtectionLimit ?? null,
     sslCheckEnabled: body.sslCheckEnabled ?? false,
     cacheBooster: body.cacheBooster ?? false,
+    jsonPath: body.jsonPath ?? null,
+    expectedValue: body.expectedValue ?? null,
     createdAt: now,
     updatedAt: now,
   })
@@ -113,6 +115,8 @@ router.put('/:id', async (c) => {
     surgeProtectionLimit: body.surgeProtectionLimit ?? existing.surgeProtectionLimit,
     sslCheckEnabled: body.sslCheckEnabled ?? existing.sslCheckEnabled,
     cacheBooster: body.cacheBooster ?? existing.cacheBooster,
+    jsonPath: body.jsonPath ?? existing.jsonPath,
+    expectedValue: body.expectedValue ?? existing.expectedValue,
     updatedAt: now,
   }).where(eq(monitors.id, id))
 
@@ -184,6 +188,35 @@ router.get('/:id/channels', async (c) => {
     .from(monitorNotifications)
     .where(eq(monitorNotifications.monitorId, c.req.param('id')))
   return c.json(rows.map(r => r.channelId))
+})
+
+router.get('/:id/maintenance', async (c) => {
+  const db = getDb(c.env.DB)
+  const rows = await db.select()
+    .from(maintenanceWindows)
+    .where(eq(maintenanceWindows.monitorId, c.req.param('id')))
+  return c.json(rows)
+})
+
+router.post('/:id/maintenance', async (c) => {
+  const db = getDb(c.env.DB)
+  const body = await c.req.json()
+  const id = crypto.randomUUID()
+  await db.insert(maintenanceWindows).values({
+    id,
+    monitorId: c.req.param('id'),
+    startAt: body.startAt,
+    endAt: body.endAt,
+    reason: body.reason ?? null,
+  })
+  return c.json({ ok: true, id })
+})
+
+router.delete('/:id/maintenance/:maintenanceId', async (c) => {
+  const db = getDb(c.env.DB)
+  await db.delete(maintenanceWindows)
+    .where(eq(maintenanceWindows.id, c.req.param('maintenanceId')))
+  return c.json({ ok: true })
 })
 
 export default router

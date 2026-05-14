@@ -8,6 +8,10 @@ import { sendPushover } from './pushover'
 import { sendWebhook } from './webhook'
 import { sendApprise } from './apprise'
 import { sendGoogleChat } from './googlechat'
+import { sendMSTeams } from './msteams'
+import { sendPagerDuty } from './pagerduty'
+import { sendMatrix } from './matrix'
+import { sendTwilio } from './twilio'
 import { SENSITIVE_FIELDS, isEncryptedValue, decryptField } from '../utils'
 export { formatMessage } from './messages'
 
@@ -45,5 +49,9 @@ export async function sendNotification(
     case 'webhook':     return sendWebhook(config, payload)
     case 'apprise':     return sendApprise(config, payload, locale)
     case 'googlechat':  return sendGoogleChat(config, payload, locale)
+    case 'msteams':     return sendMSTeams(config, payload, locale)
+    case 'pagerduty':   return sendPagerDuty(config, payload, locale)
+    case 'matrix':      return sendMatrix(config, payload, locale)
+    case 'twilio':      return sendTwilio(config, payload, locale)
   }
 }
