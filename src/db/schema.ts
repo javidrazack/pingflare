@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm'
 export const monitors = sqliteTable('monitors', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  type: text('type').notNull().$type<'http' | 'heartbeat'>(),
+  type: text('type').notNull().$type<'http' | 'heartbeat' | 'agent'>(),
   tags: text('tags').notNull().default('[]'),
   interval: integer('interval').notNull().default(60),
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
@@ -33,6 +33,10 @@ export const monitors = sqliteTable('monitors', {
   cacheBooster: integer('cache_booster', { mode: 'boolean' }).notNull().default(false),
   jsonPath: text('json_path'),
   expectedValue: text('expected_value'),
+  cpuThreshold: integer('cpu_threshold'),
+  ramThreshold: integer('ram_threshold'),
+  diskThreshold: integer('disk_threshold'),
+  lastMetrics: text('last_metrics'),
   createdAt: integer('created_at').notNull().default(sql`(unixepoch())`),
   updatedAt: integer('updated_at').notNull().default(sql`(unixepoch())`),
 })

@@ -58,13 +58,16 @@ router.post('/', async (c) => {
     cacheBooster: body.cacheBooster ?? false,
     jsonPath: body.jsonPath ?? null,
     expectedValue: body.expectedValue ?? null,
+    cpuThreshold: body.cpuThreshold ?? null,
+    ramThreshold: body.ramThreshold ?? null,
+    diskThreshold: body.diskThreshold ?? null,
     createdAt: now,
     updatedAt: now,
   })
 
   await db.insert(alertState).values({ monitorId: id })
 
-  if (body.type === 'heartbeat') {
+  if (body.type === 'heartbeat' || body.type === 'agent') {
     await db.insert(heartbeatTokens).values({
       monitorId: id,
       token: crypto.randomUUID(),
@@ -117,6 +120,9 @@ router.put('/:id', async (c) => {
     cacheBooster: body.cacheBooster ?? existing.cacheBooster,
     jsonPath: body.jsonPath ?? existing.jsonPath,
     expectedValue: body.expectedValue ?? existing.expectedValue,
+    cpuThreshold: body.cpuThreshold ?? existing.cpuThreshold,
+    ramThreshold: body.ramThreshold ?? existing.ramThreshold,
+    diskThreshold: body.diskThreshold ?? existing.diskThreshold,
     updatedAt: now,
   }).where(eq(monitors.id, id))
 
