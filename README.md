@@ -58,6 +58,7 @@ Your dashboard will be live at `https://pingflare.<your-subdomain>.workers.dev`.
 - [LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md)
 - [LOCALES.md](docs/LOCALES.md)
 - [API.md](docs/API.md)
+- [AGENT.md](docs/AGENT.md)
 
 ---
 
