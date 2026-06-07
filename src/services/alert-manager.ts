@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import type { Db } from '../db'
-import { alertState, monitors, incidents, monitorNotifications, notificationChannels, settings } from '../db/schema'
+import { alertState, monitors, incidents, monitorNotifications, notificationChannels, settings, maintenanceWindows } from '../db/schema'
+import { and, lte, gte } from 'drizzle-orm'
 import type { Monitor, AlertState, NotificationChannel } from '../db/schema'
 import { sendNotification } from '../notifications'
 import type { NotificationPayload } from '../notifications'
@@ -17,6 +18,23 @@ export interface AlertContext {
 export async function processAlert(ctx: AlertContext): Promise<void> {
   const { db, monitor, status, message, responseTimeMs, encryptionKey } = ctx
   const now = Math.floor(Date.now() / 1000)
+
+  const activeMaintenance = await db.query.maintenanceWindows.findFirst({
+    where: and(
+      eq(maintenanceWindows.monitorId, monitor.id),
+      lte(maintenanceWindows.startAt, now),
+      gte(maintenanceWindows.endAt, now)
+    )
+  })
+
+  if (activeMaintenance) {
+    // Suppress alerts and state changes during maintenance
+    await db.update(monitors).set({
+      lastCheckedAt: now,
+      lastStatus: status,
+    }).where(eq(monitors.id, monitor.id))
+    return
+  }
 
   let state = await db.query.alertState.findFirst({
     where: eq(alertState.monitorId, monitor.id),

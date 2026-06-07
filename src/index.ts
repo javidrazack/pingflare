@@ -6,6 +6,7 @@ import heartbeatRoutes from './routes/heartbeat'
 import historyRoutes from './routes/history'
 import notificationRoutes from './routes/notifications'
 import settingsRoutes from './routes/settings'
+import agentRoutes from './routes/agent'
 import statusPagesRoutes from './routes/statusPages'
 import publicStatusRoutes from './routes/publicStatus'
 import incidentReportsRoutes from './routes/incidentReports'
@@ -38,6 +39,7 @@ app.route('/api/monitors', monitorRoutes)
 app.route('/h', heartbeatRoutes)
 app.route('/api/monitors', historyRoutes)
 app.route('/api/notifications', notificationRoutes)
+app.route('/api/agent', agentRoutes)
 app.route('/api/settings', settingsRoutes)
 app.route('/api/status-pages', statusPagesRoutes)
 app.route('/api/public/status', publicStatusRoutes)

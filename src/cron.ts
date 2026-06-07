@@ -73,7 +73,7 @@ export async function runCron(env: Env): Promise<void> {
           encryptionKey: env.ENCRYPTION_KEY,
         })
 
-      } else if (monitor.type === 'heartbeat') {
+      } else if (monitor.type === 'heartbeat' || monitor.type === 'agent') {
         const hb = await db.query.heartbeatTokens.findFirst({
           where: eq(heartbeatTokens.monitorId, monitor.id),
         })

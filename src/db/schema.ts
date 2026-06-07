@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm'
 export const monitors = sqliteTable('monitors', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  type: text('type').notNull().$type<'http' | 'heartbeat'>(),
+  type: text('type').notNull().$type<'http' | 'heartbeat' | 'agent'>(),
   tags: text('tags').notNull().default('[]'),
   interval: integer('interval').notNull().default(60),
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
@@ -31,6 +31,12 @@ export const monitors = sqliteTable('monitors', {
   sslCheckEnabled: integer('ssl_check_enabled', { mode: 'boolean' }).notNull().default(false),
   sslStatus: text('ssl_status').notNull().default('unknown').$type<'ok' | 'error' | 'unknown'>(),
   cacheBooster: integer('cache_booster', { mode: 'boolean' }).notNull().default(false),
+  jsonPath: text('json_path'),
+  expectedValue: text('expected_value'),
+  cpuThreshold: integer('cpu_threshold'),
+  ramThreshold: integer('ram_threshold'),
+  diskThreshold: integer('disk_threshold'),
+  lastMetrics: text('last_metrics'),
   createdAt: integer('created_at').notNull().default(sql`(unixepoch())`),
   updatedAt: integer('updated_at').notNull().default(sql`(unixepoch())`),
 })
@@ -58,7 +64,7 @@ export const incidents = sqliteTable('incidents', {
 export const notificationChannels = sqliteTable('notification_channels', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  type: text('type').notNull().$type<'discord' | 'slack' | 'telegram' | 'email' | 'ntfy' | 'pushover' | 'webhook' | 'apprise' | 'googlechat'>(),
+  type: text('type').notNull().$type<'discord' | 'slack' | 'telegram' | 'email' | 'ntfy' | 'pushover' | 'webhook' | 'apprise' | 'googlechat' | 'msteams' | 'matrix' | 'pagerduty' | 'twilio'>(),
   config: text('config').notNull().default('{}'),
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
   isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
@@ -135,5 +141,14 @@ export type Incident = typeof incidents.$inferSelect
 export type NotificationChannel = typeof notificationChannels.$inferSelect
 export type AlertState = typeof alertState.$inferSelect
 export type StatusPage = typeof statusPages.$inferSelect
+export const maintenanceWindows = sqliteTable('maintenance_windows', {
+  id: text('id').primaryKey(),
+  monitorId: text('monitor_id').notNull().references(() => monitors.id, { onDelete: 'cascade' }),
+  startAt: integer('start_at').notNull(),
+  endAt: integer('end_at').notNull(),
+  reason: text('reason'),
+})
+
 export type IncidentReport = typeof incidentReports.$inferSelect
 export type IncidentUpdate = typeof incidentUpdates.$inferSelect
+export type MaintenanceWindow = typeof maintenanceWindows.$inferSelect

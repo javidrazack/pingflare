@@ -5,6 +5,9 @@ export const SENSITIVE_FIELDS: Record<string, string[]> = {
   pushover: ['user'],
   webhook:  ['secret'],
   apprise:  ['token'],
+  matrix:   ['accessToken'],
+  pagerduty: ['routingKey'],
+  twilio:   ['authToken'],
 }
 
 const ENCRYPTED_PREFIX = 'enc:'

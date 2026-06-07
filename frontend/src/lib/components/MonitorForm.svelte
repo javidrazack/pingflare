@@ -9,7 +9,7 @@
 
   const dispatch = createEventDispatcher<{ saved: Monitor; cancel: void }>()
 
-  let tab: 'http' | 'heartbeat' = (monitor.type ?? 'http') as 'http' | 'heartbeat'
+  let tab: 'http' | 'heartbeat' | 'agent' = (monitor.type ?? 'http') as 'http' | 'heartbeat' | 'agent'
 
   let name            = monitor.name ?? ''
   let tagsInput       = (() => { try { return JSON.parse(monitor.tags ?? '[]').join(', ') } catch { return '' } })()
@@ -35,6 +35,9 @@
   let surgeLimit          = monitor.surgeProtectionLimit ?? ''
   let sslCheckEnabled     = monitor.sslCheckEnabled ?? false
   let cacheBooster        = monitor.cacheBooster ?? false
+  let cpuThreshold        = monitor.cpuThreshold ?? ''
+  let ramThreshold        = monitor.ramThreshold ?? ''
+  let diskThreshold       = monitor.diskThreshold ?? ''
 
   let selectedChannelIds: string[] = []
   let allChannels: NotificationChannel[] = []
@@ -92,6 +95,9 @@
         heartbeatGrace: Number(heartbeatGrace),
         toleranceMissed: Number(toleranceMissed),
         surgeProtectionLimit: surgeLimit ? Number(surgeLimit) : null,
+        cpuThreshold: cpuThreshold ? Number(cpuThreshold) : null,
+        ramThreshold: ramThreshold ? Number(ramThreshold) : null,
+        diskThreshold: diskThreshold ? Number(diskThreshold) : null,
       }
 
       let result: Monitor
@@ -130,6 +136,12 @@
         {tab === 'heartbeat' ? 'bg-primary text-white' : 'btn-outline'}"
       on:click={() => { tab = 'heartbeat' }}
     >{$t('monitorForm.heartbeat')}</button>
+    <button
+      type="button"
+      class="px-4 py-1.5 text-sm font-medium transition-colors
+        {tab === 'agent' ? 'bg-primary text-white' : 'btn-outline'}"
+      on:click={() => { tab = 'agent' }}
+    >Agent / Infra</button>
   </div>
   {/if}
 
@@ -240,7 +252,7 @@
   </div>
   {/if}
 
-  {#if tab === 'heartbeat'}
+  {#if tab === 'heartbeat' || tab === 'agent'}
   <div class="space-y-4">
     <h3 class="text-sm font-semibold text-[rgb(var(--text-muted))] uppercase tracking-wide">{$t('monitorForm.sectionHeartbeat')}</h3>
     <div class="grid grid-cols-2 gap-4">
@@ -259,6 +271,26 @@
       <div>
         <label for="hb-surge" class="label">{$t('monitorForm.surgeProtection')}</label>
         <input id="hb-surge" class="input" type="number" bind:value={surgeLimit} min="1" placeholder={$t('monitorForm.disabled')} />
+      </div>
+    </div>
+  </div>
+  {/if}
+
+  {#if tab === 'agent'}
+  <div class="space-y-4 mt-6">
+    <h3 class="text-sm font-semibold text-[rgb(var(--text-muted))] uppercase tracking-wide">Infrastructure Thresholds (Optional)</h3>
+    <div class="grid grid-cols-3 gap-4">
+      <div>
+        <label for="cpu-thresh" class="label">CPU Max (%)</label>
+        <input id="cpu-thresh" class="input" type="number" bind:value={cpuThreshold} min="1" max="100" placeholder="e.g. 90" />
+      </div>
+      <div>
+        <label for="ram-thresh" class="label">RAM Max (%)</label>
+        <input id="ram-thresh" class="input" type="number" bind:value={ramThreshold} min="1" max="100" placeholder="e.g. 90" />
+      </div>
+      <div>
+        <label for="disk-thresh" class="label">Disk Max (%)</label>
+        <input id="disk-thresh" class="input" type="number" bind:value={diskThreshold} min="1" max="100" placeholder="e.g. 90" />
       </div>
     </div>
   </div>

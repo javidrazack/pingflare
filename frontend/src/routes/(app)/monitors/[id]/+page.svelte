@@ -129,6 +129,14 @@
     setTimeout(() => copied = false, 2000)
   }
 
+  let copiedInstall = false
+  async function copyInstall() {
+    if (!hbToken) return
+    await navigator.clipboard.writeText(`curl -s ${location.origin}/api/agent/install/${hbToken} | bash`)
+    copiedInstall = true
+    setTimeout(() => copiedInstall = false, 2000)
+  }
+
   onMount(() => { load(); ticker = setInterval(load, 10_000) })
   onDestroy(() => clearInterval(ticker))
 
@@ -307,6 +315,70 @@
           <button class="btn-outline text-xs flex-1 sm:flex-none justify-center" on:click={copyToken}>
             <Icon name={copied ? 'check-circle' : 'clipboard'} size={14} />
             {copied ? $t('monitor.copied') : $t('monitor.copy')}
+          </button>
+          <button class="btn-outline text-xs flex-1 sm:flex-none justify-center" on:click={regenToken}>
+            <Icon name="arrow-path" size={14} />
+            {$t('monitor.regen')}
+          </button>
+        </div>
+      </div>
+    </div>
+    {/if}
+
+    {#if monitor.type === 'agent' && monitor.lastMetrics}
+    {@const metrics = JSON.parse(monitor.lastMetrics)}
+    <div class="card">
+      <h2 class="text-sm font-semibold mb-4" style="color: rgb(var(--text))">Infrastructure Metrics</h2>
+      <div class="grid grid-cols-3 divide-x text-center mb-6" style="border: 1px solid var(--border-color); margin-top: -1px; margin-bottom: -1px; margin-left: -1px; margin-right: -1px">
+        <div class="py-4">
+          <div class="text-xs uppercase tracking-wider mb-1" style="color: rgb(var(--text-muted))">CPU</div>
+          <div class="text-2xl font-semibold" class:text-red-500={monitor.cpuThreshold && metrics.cpu > monitor.cpuThreshold}>{metrics.cpu}%</div>
+        </div>
+        <div class="py-4">
+          <div class="text-xs uppercase tracking-wider mb-1" style="color: rgb(var(--text-muted))">RAM</div>
+          <div class="text-2xl font-semibold" class:text-red-500={monitor.ramThreshold && metrics.ram > monitor.ramThreshold}>{metrics.ram}%</div>
+        </div>
+        <div class="py-4">
+          <div class="text-xs uppercase tracking-wider mb-1" style="color: rgb(var(--text-muted))">Disk</div>
+          <div class="text-2xl font-semibold" class:text-red-500={monitor.diskThreshold && metrics.disk > monitor.diskThreshold}>{metrics.disk}%</div>
+        </div>
+      </div>
+      {#if metrics.docker && metrics.docker.length > 0}
+        <h3 class="text-xs font-semibold uppercase tracking-wider mb-2 mt-4" style="color: rgb(var(--text-muted))">Docker Containers</h3>
+        <div class="space-y-2">
+          {#each metrics.docker as container}
+            <div class="flex items-center justify-between py-2 text-sm border-b last:border-b-0" style="border-color: var(--border-color)">
+              <div class="flex items-center gap-2">
+                <StatusBadge status={container.status === 'exited' || container.status === 'dead' || container.health === 'unhealthy' ? 'down' : 'up'} />
+                <span class="font-medium">{container.name}</span>
+              </div>
+              <div class="text-xs font-mono" style="color: rgb(var(--text-muted))">
+                {container.status} {#if container.health}({container.health}){/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+    {/if}
+
+    {#if monitor.type === 'agent' && hbToken}
+    <div class="card space-y-3 border-l-4" style="border-left-color: var(--color-primary)">
+      <div>
+        <h2 class="text-sm font-semibold" style="color: rgb(var(--text))">Agent Installation</h2>
+        <p class="text-xs mt-0.5" style="color: rgb(var(--text-muted))">
+          Run this command on your server to automatically install the Pingflare agent via cron.
+        </p>
+      </div>
+      <div class="flex flex-col sm:flex-row gap-2">
+        <code class="flex-1 input text-xs font-mono truncate"
+          style="background-color: rgb(var(--bg-subtle))">
+          curl -s {location.origin}/api/agent/install/{hbToken} | bash
+        </code>
+        <div class="flex gap-2">
+          <button class="btn-outline text-xs flex-1 sm:flex-none justify-center" on:click={copyInstall}>
+            <Icon name={copiedInstall ? 'check-circle' : 'clipboard'} size={14} />
+            {copiedInstall ? $t('monitor.copied') : $t('monitor.copy')}
           </button>
           <button class="btn-outline text-xs flex-1 sm:flex-none justify-center" on:click={regenToken}>
             <Icon name="arrow-path" size={14} />

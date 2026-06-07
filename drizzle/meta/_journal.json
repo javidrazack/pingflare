@@ -8,6 +8,27 @@
       "when": 1746662400000,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1778747903273,
+      "tag": "0001_sleepy_chimera",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1778748455648,
+      "tag": "0002_add_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1778765475836,
+      "tag": "0004_add_agent_metrics",
+      "breakpoints": true
     }
   ]
 }
