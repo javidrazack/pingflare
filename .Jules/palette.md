@@ -1,0 +1,3 @@
+## 2025-05-13 - Top Progress Bar using $app/stores navigating
+**Learning:** SvelteKit has built-in loading states through `$app/stores` `navigating`. In this app, navigation feels instant but when workers have slight latency or D1 query stacking, it's not clear that a transition is happening. Adding a global top progress bar makes navigation feel smoother and more responsive to users.
+**Action:** Always check if a top progress bar or similar global transition state is configured for routes. If not, utilize SvelteKit's `$navigating` store in the root layout file (`+layout.svelte`) to implement a fast, lightweight progress bar indicator, leveraging the design system's existing CSS variables like `--color-primary`.
