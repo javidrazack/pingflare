@@ -61,6 +61,12 @@ describe('agent installer generation', () => {
   it('requires root and supports systemd with a cron fallback', () => {
     expect(script).toContain('root access is required')
     expect(script).toContain('systemctl enable --now pingflare-agent.timer')
+    expect(script).toContain('OnActiveSec=1min')
+    expect(script).toContain('OnUnitActiveSec=1min')
+    expect(script).not.toContain('OnBootSec=')
+    expect(script).not.toContain('Persistent=true')
+    expect(script).toContain('NextElapseUSecMonotonic')
+    expect(script).toContain('systemd timer has no scheduled next run')
     expect(script).toContain('crontab "$cron_tmp"')
     expect(script).toContain('the cron daemon could not be started')
     expect(script).toContain('grep -v -F "$SCRIPT_PATH"')
@@ -75,6 +81,7 @@ describe('agent installer generation', () => {
       'first_heartbeat_result" != "PINGFLARE_HEARTBEAT_ACCEPTED"',
     )
     const schedulerSetup = script.indexOf('systemctl enable --now pingflare-agent.timer')
+    const schedulerCheck = script.indexOf('NextElapseUSecMonotonic')
     const successMessage = script.indexOf('Pingflare agent installed successfully')
 
     expect(firstHeartbeat).toBeGreaterThan(-1)
@@ -85,7 +92,8 @@ describe('agent installer generation', () => {
     expect(script).toContain('the agent did not confirm that the first heartbeat was accepted')
     expect(sentinelCheck).toBeGreaterThan(firstHeartbeat)
     expect(schedulerSetup).toBeGreaterThan(sentinelCheck)
-    expect(successMessage).toBeGreaterThan(schedulerSetup)
+    expect(schedulerCheck).toBeGreaterThan(schedulerSetup)
+    expect(successMessage).toBeGreaterThan(schedulerCheck)
   })
 
   it('encodes unexpected token characters before adding them to shell URLs', () => {

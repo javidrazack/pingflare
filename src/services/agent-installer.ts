@@ -229,10 +229,9 @@ EOF
 Description=Run Pingflare Infrastructure Agent every minute
 
 [Timer]
-OnBootSec=1min
+OnActiveSec=1min
 OnUnitActiveSec=1min
 AccuracySec=5s
-Persistent=true
 
 [Install]
 WantedBy=timers.target
@@ -242,6 +241,12 @@ EOF
   systemctl enable --now pingflare-agent.timer
   systemctl is-active --quiet pingflare-agent.timer ||
     fail "the pingflare-agent systemd timer did not start"
+  next_elapse=$(systemctl show pingflare-agent.timer \
+    --property=NextElapseUSecMonotonic --value 2>/dev/null || true)
+  if [ -z "$next_elapse" ] || [ "$next_elapse" = "0" ] ||
+     [ "$next_elapse" = "infinity" ]; then
+    fail "the pingflare-agent systemd timer has no scheduled next run"
+  fi
   scheduler_description="systemd timer"
 else
   cron_tmp=$(mktemp)
