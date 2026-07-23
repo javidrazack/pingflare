@@ -12,8 +12,8 @@ export const requireAuth = createMiddleware<{ Bindings: Env }>(async (c, next) =
   try {
     const key = new TextEncoder().encode(c.env.JWT_SECRET)
     await jwtVerify(token, key)
-    await next()
   } catch {
     return c.json({ error: 'Invalid token' }, 401)
   }
+  await next()
 })

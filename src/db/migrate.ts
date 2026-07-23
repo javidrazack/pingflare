@@ -1,4 +1,11 @@
 let migrated = false
+let migrationPromise: Promise<void> | null = null
+
+/** For use in tests only, resets the migration flag so a fresh in-memory DB can be initialized. */
+export function resetMigratedFlag(): void {
+  migrated = false
+  migrationPromise = null
+}
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS monitors (
@@ -11,7 +18,6 @@ CREATE TABLE IF NOT EXISTS monitors (
   last_checked_at integer,
   last_status text DEFAULT 'pending' NOT NULL,
   reminder_interval_hours integer,
-  callbacks_enabled integer DEFAULT false NOT NULL,
   tolerance_failures integer DEFAULT 1 NOT NULL,
   url text,
   method text DEFAULT 'GET' NOT NULL,
@@ -29,6 +35,19 @@ CREATE TABLE IF NOT EXISTS monitors (
   heartbeat_grace integer DEFAULT 30 NOT NULL,
   tolerance_missed integer DEFAULT 1 NOT NULL,
   surge_protection_limit integer,
+  ssl_check_enabled integer DEFAULT false NOT NULL,
+  ssl_status text DEFAULT 'unknown' NOT NULL,
+  cache_booster integer DEFAULT false NOT NULL,
+  json_path text,
+  expected_value text,
+  cpu_threshold integer,
+  ram_threshold integer,
+  disk_threshold integer,
+  last_metrics text,
+  dns_hostname text,
+  dns_record_type text DEFAULT 'A',
+  dns_resolver_url text,
+  dns_expected_ip text,
   created_at integer DEFAULT (unixepoch()) NOT NULL,
   updated_at integer DEFAULT (unixepoch()) NOT NULL
 );
@@ -78,6 +97,10 @@ CREATE TABLE IF NOT EXISTS heartbeat_tokens (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS heartbeat_tokens_token_unique ON heartbeat_tokens (token);
+
+CREATE INDEX IF NOT EXISTS idx_sl_monitor_checked ON status_logs (monitor_id, checked_at);
+CREATE INDEX IF NOT EXISTS idx_sl_checked_at ON status_logs (checked_at);
+CREATE INDEX IF NOT EXISTS idx_monitors_active ON monitors (active);
 
 CREATE TABLE IF NOT EXISTS alert_state (
   monitor_id text PRIMARY KEY NOT NULL,
@@ -142,29 +165,60 @@ CREATE TABLE IF NOT EXISTS incident_monitors (
   FOREIGN KEY (incident_id) REFERENCES incident_reports(id) ON UPDATE no action ON DELETE cascade,
   FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON UPDATE no action ON DELETE cascade
 );
+
+CREATE TABLE IF NOT EXISTS maintenance_windows (
+  id text PRIMARY KEY NOT NULL,
+  monitor_id text NOT NULL,
+  start_at integer NOT NULL,
+  end_at integer NOT NULL,
+  reason text,
+  FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON UPDATE no action ON DELETE cascade
+);
 `
 
 export async function ensureSchema(d1: D1Database): Promise<void> {
   if (migrated) return
-  const statements = SCHEMA_SQL
-    .split(';')
-    .map(s => s.trim())
-    .filter(s => s.length > 0)
-  await d1.batch(statements.map(s => d1.prepare(s)))
+  if (!migrationPromise) {
+    migrationPromise = (async () => {
+      const statements = SCHEMA_SQL
+        .split(';')
+        .map(s => s.trim())
+        .filter(s => s.length > 0)
+      await d1.batch(statements.map(s => d1.prepare(s)))
 
-  const alterStatements = [
-    `ALTER TABLE status_pages ADD COLUMN show_all_monitors integer DEFAULT false NOT NULL`,
-    `ALTER TABLE notification_channels ADD COLUMN is_default integer DEFAULT false NOT NULL`,
-    `ALTER TABLE monitors ADD COLUMN ssl_check_enabled integer DEFAULT false NOT NULL`,
-    `ALTER TABLE monitors ADD COLUMN ssl_status text DEFAULT 'unknown' NOT NULL`,
-    `ALTER TABLE monitors ADD COLUMN cache_booster integer DEFAULT false NOT NULL`,
-    `ALTER TABLE status_logs ADD COLUMN colo text`,
-    `ALTER TABLE status_logs ADD COLUMN country_code text`,
-    `ALTER TABLE status_logs ADD COLUMN origin_ip text`,
-  ]
-  for (const sql of alterStatements) {
-    try { await d1.prepare(sql).run() } catch { /* column already exists */ }
+      const alterStatements = [
+        `ALTER TABLE status_pages ADD COLUMN show_all_monitors integer DEFAULT false NOT NULL`,
+        `ALTER TABLE notification_channels ADD COLUMN is_default integer DEFAULT false NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN ssl_check_enabled integer DEFAULT false NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN ssl_status text DEFAULT 'unknown' NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN cache_booster integer DEFAULT false NOT NULL`,
+        `ALTER TABLE status_logs ADD COLUMN colo text`,
+        `ALTER TABLE status_logs ADD COLUMN country_code text`,
+        `ALTER TABLE status_logs ADD COLUMN origin_ip text`,
+        `ALTER TABLE monitors ADD COLUMN dns_hostname text`,
+        `ALTER TABLE monitors ADD COLUMN dns_record_type text DEFAULT 'A'`,
+        `ALTER TABLE monitors ADD COLUMN dns_resolver_url text`,
+        `ALTER TABLE monitors ADD COLUMN dns_expected_ip text`,
+        `ALTER TABLE monitors ADD COLUMN json_path text`,
+        `ALTER TABLE monitors ADD COLUMN expected_value text`,
+        `ALTER TABLE monitors ADD COLUMN cpu_threshold integer`,
+        `ALTER TABLE monitors ADD COLUMN ram_threshold integer`,
+        `ALTER TABLE monitors ADD COLUMN disk_threshold integer`,
+        `ALTER TABLE monitors ADD COLUMN last_metrics text`,
+      ]
+      for (const sql of alterStatements) {
+        try {
+          await d1.prepare(sql).run()
+        } catch (error) {
+          if (!String(error).toLowerCase().includes('duplicate column')) throw error
+        }
+      }
+      migrated = true
+    })()
   }
-
-  migrated = true
+  try {
+    await migrationPromise
+  } finally {
+    migrationPromise = null
+  }
 }

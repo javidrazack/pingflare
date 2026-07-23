@@ -7,7 +7,7 @@ The agent runs on a 1-minute cron schedule and collects:
 1. **CPU Usage**: Extracted via `top`.
 2. **RAM Usage**: Extracted via `free`.
 3. **Disk Usage**: Extracted via `df` (checks the root `/` mount).
-4. **Docker Containers**: Extracts all container statuses via `docker ps` and `jq`.
+4. **Docker Containers**: Extracts running and stopped container statuses via `docker ps -a` and `jq`.
 
 It pushes these metrics to your Pingflare instance via `POST /api/agent/push/:token`.
 
@@ -15,7 +15,7 @@ It pushes these metrics to your Pingflare instance via `POST /api/agent/push/:to
 
 1. Open your Pingflare dashboard.
 2. Click **Create Monitor** and select the **Agent / Infra** tab.
-3. Configure the maximum thresholds (e.g., maximum CPU, RAM, or Disk). If any threshold is breached, or if any running Docker container enters an `exited`, `dead`, or `unhealthy` state, the monitor will trigger a downtime incident and send alerts.
+3. Configure the maximum thresholds (e.g., maximum CPU, RAM, or Disk). If any threshold is breached, any container is not running, or a running container is unhealthy, the monitor will trigger a downtime incident and send alerts.
 4. Save the monitor.
 5. In the monitor details page, you will see an **Agent Installation** command block.
 6. Copy the command and paste it into the terminal of the server you wish to monitor.

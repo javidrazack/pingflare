@@ -1,5 +1,6 @@
 import type { NotificationPayload } from './index'
 import { formatMessage } from './messages'
+import { assertResponseOk } from './http'
 
 export async function sendMSTeams(config: Record<string, string>, payload: NotificationPayload, locale: string): Promise<void> {
   const { webhookUrl } = config
@@ -22,8 +23,5 @@ export async function sendMSTeams(config: Record<string, string>, payload: Notif
     body: JSON.stringify(body),
   })
 
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`MS Teams error: ${res.status} ${err}`)
-  }
+  await assertResponseOk(res, 'MS Teams')
 }

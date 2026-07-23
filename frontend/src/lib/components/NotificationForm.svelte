@@ -10,7 +10,10 @@
 
   const dispatch = createEventDispatcher<{ saved: NotificationChannel; cancel: void }>()
 
-  const CHANNEL_TYPES = ['discord', 'slack', 'telegram', 'email', 'ntfy', 'pushover', 'webhook', 'apprise', 'googlechat'] as const
+  const CHANNEL_TYPES = [
+    'discord', 'slack', 'telegram', 'email', 'ntfy', 'pushover', 'webhook',
+    'apprise', 'googlechat', 'msteams', 'matrix', 'pagerduty', 'twilio',
+  ] as const
 
   let name = channel.name ?? ''
   let type: typeof CHANNEL_TYPES[number] = (channel.type as typeof CHANNEL_TYPES[number]) ?? 'discord'
@@ -29,8 +32,8 @@
   try { config = JSON.parse(configStr) } catch { config = {} }
 
   $: FIELDS = {
-    discord:  [{ key: 'webhookUrl', label: $t('notifField.webhookUrl'), placeholder: 'https://discord.com/api/webhooks/...' }],
-    slack:    [{ key: 'webhookUrl', label: $t('notifField.webhookUrl'), placeholder: 'https://hooks.slack.com/services/...' }],
+    discord:  [{ key: 'webhookUrl', label: $t('notifField.webhookUrl'), placeholder: 'https://discord.com/api/webhooks/...', secret: true }],
+    slack:    [{ key: 'webhookUrl', label: $t('notifField.webhookUrl'), placeholder: 'https://hooks.slack.com/services/...', secret: true }],
     telegram: [
       { key: 'botToken', label: $t('notifField.botToken'), placeholder: '123456:ABC-DEF...', secret: true },
       { key: 'chatId',   label: $t('notifField.chatId'),   placeholder: '-100123456789' },
@@ -49,20 +52,37 @@
       { key: 'token', label: $t('notifField.tokenOptional'), placeholder: '', secret: true },
     ],
     pushover: [
-      { key: 'token', label: $t('notifField.appToken'), placeholder: 'azGDORePK8gMaC0QOYAMyEEuzJnyUi' },
+      { key: 'token', label: $t('notifField.appToken'), placeholder: 'azGDORePK8gMaC0QOYAMyEEuzJnyUi', secret: true },
       { key: 'user',  label: $t('notifField.userKey'),  placeholder: 'uQiRzpo4DXghDmr9QzzfQu', secret: true },
     ],
     webhook: [
-      { key: 'url',    label: $t('notifField.url'),            placeholder: 'https://your-server.com/hook' },
+      { key: 'url',    label: $t('notifField.url'),            placeholder: 'https://your-server.com/hook', secret: true },
       { key: 'secret', label: $t('notifField.secretOptional'), placeholder: '', secret: true },
     ],
     apprise: [
       { key: 'url',   label: $t('notifField.appriseApiUrl'),     placeholder: 'http://apprise:8000' },
-      { key: 'urls',  label: $t('notifField.notificationUrls'),  placeholder: 'slack://tokenA/tokenB/tokenC' },
+      { key: 'urls',  label: $t('notifField.notificationUrls'),  placeholder: 'slack://tokenA/tokenB/tokenC', secret: true },
       { key: 'token', label: $t('notifField.apiTokenOptional'),  placeholder: '', secret: true },
     ],
     googlechat: [
-      { key: 'webhookUrl', label: $t('notifField.webhookUrl'), placeholder: 'https://chat.googleapis.com/v1/spaces/.../messages?key=...' },
+      { key: 'webhookUrl', label: $t('notifField.webhookUrl'), placeholder: 'https://chat.googleapis.com/v1/spaces/.../messages?key=...', secret: true },
+    ],
+    msteams: [
+      { key: 'webhookUrl', label: $t('notifField.webhookUrl'), placeholder: 'https://...webhook.office.com/...', secret: true },
+    ],
+    matrix: [
+      { key: 'homeserverUrl', label: $t('notifField.homeserverUrl'), placeholder: 'https://matrix.example.com' },
+      { key: 'accessToken', label: $t('notifField.accessToken'), placeholder: '', secret: true },
+      { key: 'roomId', label: $t('notifField.roomId'), placeholder: '!room:example.com' },
+    ],
+    pagerduty: [
+      { key: 'routingKey', label: $t('notifField.routingKey'), placeholder: '', secret: true },
+    ],
+    twilio: [
+      { key: 'accountSid', label: $t('notifField.accountSid'), placeholder: 'AC...' },
+      { key: 'authToken', label: $t('notifField.authToken'), placeholder: '', secret: true },
+      { key: 'fromNumber', label: $t('notifField.fromNumber'), placeholder: '+15551234567' },
+      { key: 'toNumber', label: $t('notifField.toNumber'), placeholder: '+15557654321' },
     ],
   } as Record<string, { key: string; label: string; placeholder: string; type?: string; secret?: boolean }[]>
 

@@ -4,6 +4,7 @@ frontend/build/
 frontend/.svelte-kit/
 .wrangler/
 dist/
+dist-server/
 *.local
 .env
 .env.test

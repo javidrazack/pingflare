@@ -17,16 +17,12 @@
 
   async function load() {
     try {
-      const list = await api.monitors.list()
+      const [list, summary] = await Promise.all([
+        api.monitors.list(),
+        api.monitors.uptimeSummary(30),
+      ])
       monitors.set(list)
-      const results = await Promise.allSettled(
-        list.map(m => api.monitors.uptime(m.id, 30).then(r => [m.id, r.uptime] as [string, number | null]))
-      )
-      const map: Record<string, number | null> = {}
-      for (const r of results) {
-        if (r.status === 'fulfilled') map[r.value[0]] = r.value[1]
-      }
-      uptimes = map
+      uptimes = summary.uptimes
       error = ''
     } catch (e) {
       error = String(e)

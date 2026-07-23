@@ -58,6 +58,8 @@ export function channelTypeLabel(type: string): string {
     discord: 'Discord', slack: 'Slack', telegram: 'Telegram',
     email: 'Email', ntfy: 'ntfy', pushover: 'Pushover',
     webhook: 'Webhook', apprise: 'Apprise API', googlechat: 'Google Chat',
+    msteams: 'Microsoft Teams', matrix: 'Matrix',
+    pagerduty: 'PagerDuty', twilio: 'Twilio SMS',
   }
   return labels[type] ?? type
 }
@@ -67,6 +69,7 @@ export function channelTypeIcon(type: string): string {
     discord: '💬', slack: '🔔', telegram: '✈️',
     email: '📧', ntfy: '📣', pushover: '📱',
     webhook: '🔗', apprise: '🔀', googlechat: '💼',
+    msteams: '👥', matrix: '💬', pagerduty: '🚨', twilio: '📲',
   }
   return icons[type] ?? '🔔'
 }

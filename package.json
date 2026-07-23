@@ -1,6 +1,6 @@
 {
   "name": "pingflare",
-  "version": "1.0.1",
+  "version": "1.4.2",
   "private": true,
   "workspaces": [
     "frontend"
@@ -10,26 +10,47 @@
     "dev:backend": "wrangler dev --test-scheduled",
     "dev:frontend": "npm run dev -w frontend",
     "dev:cron": "node scripts/cron-sim.mjs",
-    "build": "npm run build -w frontend",
+    "dev:node": "tsx watch src/server.ts",
+    "build": "npm run typecheck && npm run build -w frontend",
+    "build:server": "tsup",
+    "start": "node dist-server/server.js",
     "deploy": "npm run build && wrangler deploy",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply pingflare --local",
-    "db:migrate:remote": "wrangler d1 migrations apply pingflare",
-    "cf-typegen": "wrangler types"
+    "db:migrate:remote": "wrangler d1 migrations apply pingflare --remote",
+    "cf-typegen": "wrangler types",
+    "typecheck": "tsc --noEmit && npm run check -w frontend",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@hono/node-server": "^2.0.4",
+    "@sveltejs/adapter-static": "3.0.10",
+    "@sveltejs/kit": "2.61.1",
+    "better-sqlite3": "^12.10.0",
+    "bits-ui": "2.18.1",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.12.18",
+    "hono": "^4.12.26",
     "jose": "^6.2.3",
     "jsonpath": "^1.3.0",
-    "npm-check-updates": "^22.1.1"
+    "node-cron": "^4.2.1",
+    "npm-check-updates": "^22.2.1"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260510.1",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/jsonpath": "^0.2.4",
-    "concurrently": "^9.2.1",
+    "@types/node": "^25.9.1",
+    "@types/node-cron": "^3.0.11",
+    "concurrently": "^9.2.3",
     "drizzle-kit": "^0.31.10",
+    "tsup": "^8.5.1",
+    "tsx": "^4.22.3",
     "typescript": "^6.0.3",
-    "wrangler": "^4.90.0"
+    "vitest": "^4.1.7",
+    "wrangler": "^4.103.0"
+  },
+  "overrides": {
+    "cookie": "^0.7.0",
+    "vite": "^6.4.3 || ^8.0.16"
   }
 }

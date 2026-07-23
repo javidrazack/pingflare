@@ -1,10 +1,14 @@
 export const SENSITIVE_FIELDS: Record<string, string[]> = {
+  discord:  ['webhookUrl'],
+  slack:    ['webhookUrl'],
   telegram: ['botToken'],
   email:    ['password'],
   ntfy:     ['token'],
-  pushover: ['user'],
-  webhook:  ['secret'],
-  apprise:  ['token'],
+  pushover: ['token', 'user'],
+  webhook:  ['url', 'secret'],
+  apprise:  ['urls', 'token'],
+  googlechat: ['webhookUrl'],
+  msteams:  ['webhookUrl'],
   matrix:   ['accessToken'],
   pagerduty: ['routingKey'],
   twilio:   ['authToken'],
@@ -46,34 +50,55 @@ export async function sha256(text: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+export async function timingSafeEqualText(left: string, right: string): Promise<boolean> {
+  const encoder = new TextEncoder()
+  const [leftHash, rightHash] = await Promise.all([
+    crypto.subtle.digest('SHA-256', encoder.encode(left)),
+    crypto.subtle.digest('SHA-256', encoder.encode(right)),
+  ])
+  const leftBytes = new Uint8Array(leftHash)
+  const rightBytes = new Uint8Array(rightHash)
+  let difference = 0
+  for (let i = 0; i < leftBytes.length; i++) {
+    difference |= leftBytes[i] ^ rightBytes[i]
+  }
+  return difference === 0
+}
+
 export async function hashPassword(password: string): Promise<string> {
+  const iterations = 210_000
   const enc = new TextEncoder()
   const salt = Array.from(crypto.getRandomValues(new Uint8Array(16)))
     .map(b => b.toString(16).padStart(2, '0')).join('')
   const key = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits'])
   const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(salt), iterations: 10000 },
+    { name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(salt), iterations },
     key,
     256,
   )
   const hash = Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('')
-  return `${salt}:${hash}`
+  return `pbkdf2:${iterations}:${salt}:${hash}`
 }
 
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  const colonIdx = stored.indexOf(':')
-  if (colonIdx === -1) {
-    return (await sha256(password)) === stored
+  const parts = stored.split(':')
+  if (parts.length === 1) {
+    return timingSafeEqualText(await sha256(password), stored)
   }
-  const salt = stored.slice(0, colonIdx)
-  const hash = stored.slice(colonIdx + 1)
+  const versioned = parts[0] === 'pbkdf2' && parts.length === 4
+  const iterations = versioned ? Number(parts[1]) : 10_000
+  const salt = versioned ? parts[2] : parts[0]
+  const hash = versioned ? parts[3] : parts[1]
+  if (!Number.isInteger(iterations) || iterations < 10_000 || iterations > 1_000_000 || !salt || !hash) {
+    return false
+  }
   const enc = new TextEncoder()
   const key = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits'])
   const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(salt), iterations: 10000 },
+    { name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(salt), iterations },
     key,
     256,
   )
   const computed = Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('')
-  return computed === hash
+  return timingSafeEqualText(computed, hash)
 }

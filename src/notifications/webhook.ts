@@ -1,4 +1,5 @@
 import type { NotificationPayload } from './index'
+import { assertResponseOk } from './http'
 
 export async function sendWebhook(
   config: Record<string, string>,
@@ -7,7 +8,7 @@ export async function sendWebhook(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (config.secret) headers['X-Pingflare-Secret'] = config.secret
 
-  await fetch(config.url, {
+  const response = await fetch(config.url, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -15,4 +16,5 @@ export async function sendWebhook(
       timestamp: Math.floor(Date.now() / 1000),
     }),
   })
+  await assertResponseOk(response, 'Webhook')
 }

@@ -21,7 +21,7 @@
   let isFullscreen = false
   let countdown = 60
 
-  async function load(pw?: string) {
+  async function load(pw = '') {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (pw) headers['X-Status-Password'] = pw
     const res = await fetch(`/api/public/status/${slug}`, { headers })

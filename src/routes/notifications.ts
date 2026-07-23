@@ -1,13 +1,48 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { eq } from 'drizzle-orm'
 import { getDb, notificationChannels, monitors, monitorNotifications } from '../db'
 import { requireAuth } from '../middleware/auth'
 import { sendNotification } from '../services/notifier'
 import { SENSITIVE_FIELDS, isEncryptedValue, encryptField } from '../utils'
+import { readJsonBodyWithLimit, RequestBodyTooLargeError } from '../request'
 import type { Env } from '../index'
 
 const router = new Hono<{ Bindings: Env }>()
 router.use('*', requireAuth)
+const CHANNEL_TYPES = new Set([
+  'discord', 'slack', 'telegram', 'email', 'ntfy', 'pushover', 'webhook',
+  'apprise', 'googlechat', 'msteams', 'matrix', 'pagerduty', 'twilio',
+])
+
+async function readChannelBody(c: Context<{ Bindings: Env }>): Promise<Record<string, any> | Response> {
+  try {
+    const body = await readJsonBodyWithLimit(c.req.raw, 64 * 1024)
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new SyntaxError()
+    return body as Record<string, any>
+  } catch (error) {
+    return c.json(
+      { error: error instanceof RequestBodyTooLargeError ? 'Request is too large' : 'Invalid JSON body' },
+      error instanceof RequestBodyTooLargeError ? 413 : 400,
+    )
+  }
+}
+
+function validateChannel(body: Record<string, any>, existingType?: string): string | null {
+  const type = body.type ?? existingType
+  if (typeof body.name !== 'undefined' && (
+    typeof body.name !== 'string' || body.name.trim() === '' || body.name.length > 200
+  )) return 'Invalid channel name'
+  if (typeof type !== 'string' || !CHANNEL_TYPES.has(type)) return 'Invalid channel type'
+  if (body.config !== undefined && (
+    !body.config ||
+    typeof body.config !== 'object' ||
+    Array.isArray(body.config) ||
+    Object.keys(body.config).length > 100 ||
+    Object.entries(body.config).some(([key, value]) =>
+      key.length > 100 || typeof value !== 'string' || value.length > 16384)
+  )) return 'Invalid channel configuration'
+  return null
+}
 
 function sanitizeChannel(ch: { id: string; name: string; type: string; config: string; active: boolean; isDefault: boolean; createdAt: number }) {
   const config = JSON.parse(ch.config) as Record<string, string>
@@ -15,7 +50,7 @@ function sanitizeChannel(ch: { id: string; name: string; type: string; config: s
   const encryptedFields: string[] = []
 
   for (const key of sensitiveKeys) {
-    if (config[key] && isEncryptedValue(config[key])) {
+    if (config[key]) {
       encryptedFields.push(key)
       config[key] = ''
     }
@@ -55,7 +90,12 @@ router.get('/:id', async (c) => {
 
 router.post('/', async (c) => {
   const db = getDb(c.env.DB)
-  const body = await c.req.json()
+  const body = await readChannelBody(c)
+  if (body instanceof Response) return body
+  const validationError = validateChannel(body)
+  if (validationError || typeof body.name !== 'string') {
+    return c.json({ error: validationError ?? 'Channel name is required' }, 400)
+  }
   const id = crypto.randomUUID()
   const now = Math.floor(Date.now() / 1000)
 
@@ -81,24 +121,33 @@ router.post('/', async (c) => {
 router.put('/:id', async (c) => {
   const db = getDb(c.env.DB)
   const id = c.req.param('id')
-  const body = await c.req.json()
+  const body = await readChannelBody(c)
+  if (body instanceof Response) return body
 
   const existing = await db.query.notificationChannels.findFirst({
     where: eq(notificationChannels.id, id),
   })
   if (!existing) return c.json({ error: 'Not found' }, 404)
+  const validationError = validateChannel(body, existing.type)
+  if (validationError) return c.json({ error: validationError }, 400)
 
+  const nextType = body.type ?? existing.type
   let newConfig: Record<string, string> | undefined
   if (body.config !== undefined) {
     const existingConfig = JSON.parse(existing.config) as Record<string, string>
     const incomingConfig = body.config as Record<string, string>
-    const mergedConfig = { ...existingConfig, ...incomingConfig }
+    const mergedConfig = nextType === existing.type
+      ? { ...existingConfig, ...incomingConfig }
+      : { ...incomingConfig }
 
-    for (const key of SENSITIVE_FIELDS[existing.type] ?? []) {
+    for (const key of SENSITIVE_FIELDS[nextType] ?? []) {
       const incoming = incomingConfig[key]
-      if (!incoming || incoming.length === 0) {
-        mergedConfig[key] = existingConfig[key] ?? ''
-      } else if (!isEncryptedValue(incoming)) {
+      if (nextType === existing.type && (!incoming || incoming.length === 0)) {
+        const saved = existingConfig[key] ?? ''
+        mergedConfig[key] = saved && !isEncryptedValue(saved)
+          ? await encryptField(saved, c.env.ENCRYPTION_KEY)
+          : saved
+      } else if (incoming && !isEncryptedValue(incoming)) {
         mergedConfig[key] = await encryptField(incoming, c.env.ENCRYPTION_KEY)
       }
     }
@@ -108,7 +157,7 @@ router.put('/:id', async (c) => {
 
   await db.update(notificationChannels).set({
     name: body.name ?? existing.name,
-    type: body.type ?? existing.type,
+    type: nextType,
     config: newConfig !== undefined ? JSON.stringify(newConfig) : existing.config,
     active: body.active ?? existing.active,
     isDefault: body.isDefault !== undefined ? body.isDefault : existing.isDefault,

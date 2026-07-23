@@ -1,0 +1,14 @@
+node_modules
+frontend/node_modules
+dist-server
+frontend/build
+.wrangler
+data
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
+.git
+.github

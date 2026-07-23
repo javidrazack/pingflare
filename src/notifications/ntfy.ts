@@ -1,5 +1,6 @@
 import type { NotificationPayload } from './index'
 import { formatMessage } from './messages'
+import { assertResponseOk } from './http'
 
 export async function sendNtfy(
   config: Record<string, string>,
@@ -15,9 +16,10 @@ export async function sendNtfy(
   }
   if (config.token) headers['Authorization'] = `Bearer ${config.token}`
 
-  await fetch(`${config.url}/${config.topic}`, {
+  const response = await fetch(`${config.url}/${config.topic}`, {
     method: 'POST',
     headers,
     body: formatMessage(payload, locale),
   })
+  await assertResponseOk(response, 'ntfy')
 }

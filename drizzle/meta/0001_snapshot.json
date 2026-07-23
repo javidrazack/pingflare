@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "b3d8a227-4eeb-48a4-ba05-40576f60a044",
+  "id": "af692154-4bfa-442c-979d-bab54865f174",
   "prevId": "ebbe2cb9-a606-4d6d-b126-9443f1393239",
   "tables": {
     "alert_state": {
@@ -639,20 +639,6 @@
           "autoincrement": false,
           "default": false
         },
-        "json_path": {
-          "name": "json_path",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "expected_value": {
-          "name": "expected_value",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -670,7 +656,15 @@
           "default": "(unixepoch())"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "idx_monitors_active": {
+          "name": "idx_monitors_active",
+          "columns": [
+            "active"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -830,7 +824,23 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "idx_sl_monitor_checked": {
+          "name": "idx_sl_monitor_checked",
+          "columns": [
+            "monitor_id",
+            "checked_at"
+          ],
+          "isUnique": false
+        },
+        "idx_sl_checked_at": {
+          "name": "idx_sl_checked_at",
+          "columns": [
+            "checked_at"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
         "status_logs_monitor_id_monitors_id_fk": {
           "name": "status_logs_monitor_id_monitors_id_fk",

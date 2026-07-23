@@ -16,28 +16,53 @@ import { runCron } from './cron'
 import { requireAuth } from './middleware/auth'
 import { ensureSchema } from './db/migrate'
 
-export type Env = {
-  DB: D1Database
-  ASSETS: Fetcher
-  ADMIN_USER: string
-  ADMIN_PASS: string
-  JWT_SECRET: string
-  ENCRYPTION_KEY: string
-}
+export type Env = Cloudflare.Env
 
 const app = new Hono<{ Bindings: Env }>()
 
-app.use('/api/*', cors())
-
 app.use('*', async (c, next) => {
-  await ensureSchema(c.env.DB)
+  const usesWorkerApi = c.req.path.startsWith('/api/') || c.req.path.startsWith('/h/')
+  if (usesWorkerApi && c.req.path !== '/api/health') {
+    const missing = (['ADMIN_USER', 'ADMIN_PASS', 'JWT_SECRET', 'ENCRYPTION_KEY'] as const)
+      .filter((key) => typeof c.env[key] !== 'string' || c.env[key].length === 0)
+    const tooShort = (['JWT_SECRET', 'ENCRYPTION_KEY'] as const)
+      .filter((key) => typeof c.env[key] === 'string' && c.env[key].length > 0 && c.env[key].length < 32)
+    const missingBindings = [
+      !c.env.DB || typeof c.env.DB.prepare !== 'function' ? 'DB (D1 binding)' : null,
+      !c.env.LOGIN_RATE_LIMITER || typeof c.env.LOGIN_RATE_LIMITER.limit !== 'function'
+        ? 'LOGIN_RATE_LIMITER (rate-limit binding)'
+        : null,
+    ].filter((value): value is string => value !== null)
+    if (missing.length > 0 || tooShort.length > 0 || missingBindings.length > 0) {
+      const issues = [
+        ...missing,
+        ...tooShort.map(key => `${key} (must be at least 32 characters)`),
+        ...missingBindings,
+      ]
+      return c.json({
+        error: `Worker runtime configuration is incomplete: ${issues.join(', ')}`,
+        code: 'CONFIGURATION_ERROR',
+      }, 503)
+    }
+    try {
+      await ensureSchema(c.env.DB)
+    } catch (error) {
+      console.error('[schema] initialization failed', error)
+      return c.json({
+        error: 'Database schema initialization failed',
+        code: 'DATABASE_INITIALIZATION_ERROR',
+      }, 503)
+    }
+  }
   await next()
 })
 
+app.use('/api/*', cors())
+
 app.route('/api/auth', authRoutes)
-app.route('/api/monitors', monitorRoutes)
 app.route('/h', heartbeatRoutes)
 app.route('/api/monitors', historyRoutes)
+app.route('/api/monitors', monitorRoutes)
 app.route('/api/notifications', notificationRoutes)
 app.route('/api/agent', agentRoutes)
 app.route('/api/settings', settingsRoutes)

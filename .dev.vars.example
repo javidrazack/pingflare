@@ -1,5 +1,4 @@
 ADMIN_USER=admin
 ADMIN_PASS=changeme
 JWT_SECRET=replace-with-a-long-random-string
-CRON_SHARDS=2
 ENCRYPTION_KEY=replace-with-a-long-random-string

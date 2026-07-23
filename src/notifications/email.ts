@@ -10,8 +10,22 @@ function utf8ToBase64(str: string): string {
 }
 
 function encodeHeader(value: string): string {
+  value = value.replace(/[\r\n]+/g, ' ')
   if (/[^\x00-\x7f]/.test(value)) return `=?UTF-8?B?${utf8ToBase64(value)}?=`
   return value
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function sanitizeAddress(value: string): string {
+  return value.replace(/[\r\n]/g, '').trim()
 }
 
 class SmtpConnection {
@@ -77,18 +91,20 @@ export async function sendEmail(
   const label = getTypeLabel(payload.type, locale)
   const subject = `${icon} ${label}: ${payload.monitor.name}`
 
-  const bodyLines = [`<h2>${subject}</h2>`]
-  if (payload.message) bodyLines.push(`<p>${payload.message}</p>`)
+  const bodyLines = [`<h2>${escapeHtml(subject)}</h2>`]
+  if (payload.message) bodyLines.push(`<p>${escapeHtml(payload.message)}</p>`)
 
   for (const field of metaFields(payload, locale)) {
-    bodyLines.push(`<p><b>${field.name}:</b> ${field.value}</p>`)
+    bodyLines.push(`<p><b>${escapeHtml(field.name)}:</b> ${escapeHtml(String(field.value))}</p>`)
   }
 
-  const recipients = to.split(',').map((s: string) => s.trim()).filter(Boolean)
+  const sender = sanitizeAddress(from)
+  const recipients = to.split(',').map(sanitizeAddress).filter(Boolean)
+  if (!sender || recipients.length === 0) throw new Error('SMTP sender and recipient are required')
 
   const message = [
     `Date: ${new Date().toUTCString()}`,
-    `From: ${from}`,
+    `From: ${sender}`,
     `To: ${recipients.join(', ')}`,
     `Subject: ${encodeHeader(subject)}`,
     `MIME-Version: 1.0`,
@@ -120,7 +136,7 @@ export async function sendEmail(
   await conn.cmd(utf8ToBase64(user), 334)
   await conn.cmd(utf8ToBase64(password), 235)
 
-  await conn.cmd(`MAIL FROM:<${from}>`, 250)
+  await conn.cmd(`MAIL FROM:<${sender}>`, 250)
   for (const rcpt of recipients) {
     await conn.cmd(`RCPT TO:<${rcpt}>`, 250)
   }

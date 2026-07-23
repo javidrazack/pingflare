@@ -1,5 +1,6 @@
 import type { NotificationPayload } from './index'
 import { formatMessage } from './messages'
+import { assertResponseOk } from './http'
 
 export async function sendTwilio(config: Record<string, string>, payload: NotificationPayload, locale: string): Promise<void> {
   const { accountSid, authToken, fromNumber, toNumber } = config
@@ -27,8 +28,5 @@ export async function sendTwilio(config: Record<string, string>, payload: Notifi
     body: formData.toString(),
   })
 
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Twilio error: ${res.status} ${err}`)
-  }
+  await assertResponseOk(res, 'Twilio')
 }

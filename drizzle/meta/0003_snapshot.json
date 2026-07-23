@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "24e9e45b-eb00-4a91-81e1-e7423745fe88",
-  "prevId": "b3d8a227-4eeb-48a4-ba05-40576f60a044",
+  "id": "a57cf3cb-d23e-4013-aa25-955e3dd04adb",
+  "prevId": "81c7f929-3eb7-4c26-a2b6-c5b12312adb7",
   "tables": {
     "alert_state": {
       "name": "alert_state",
@@ -712,6 +712,63 @@
           "notNull": false,
           "autoincrement": false
         },
+        "cpu_threshold": {
+          "name": "cpu_threshold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ram_threshold": {
+          "name": "ram_threshold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "disk_threshold": {
+          "name": "disk_threshold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_metrics": {
+          "name": "last_metrics",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "dns_hostname": {
+          "name": "dns_hostname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "dns_record_type": {
+          "name": "dns_record_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": "'A'"
+        },
+        "dns_resolver_url": {
+          "name": "dns_resolver_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "dns_expected_ip": {
+          "name": "dns_expected_ip",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -729,7 +786,15 @@
           "default": "(unixepoch())"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "idx_monitors_active": {
+          "name": "idx_monitors_active",
+          "columns": [
+            "active"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -889,7 +954,23 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "idx_sl_monitor_checked": {
+          "name": "idx_sl_monitor_checked",
+          "columns": [
+            "monitor_id",
+            "checked_at"
+          ],
+          "isUnique": false
+        },
+        "idx_sl_checked_at": {
+          "name": "idx_sl_checked_at",
+          "columns": [
+            "checked_at"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
         "status_logs_monitor_id_monitors_id_fk": {
           "name": "status_logs_monitor_id_monitors_id_fk",

@@ -17,7 +17,7 @@
 
   interface PublicMonitorData {
     name: string
-    type: 'http' | 'heartbeat'
+    type: 'http' | 'heartbeat' | 'agent' | 'dns' | 'ping'
     url: string | null
     tags: string
     lastStatus: 'up' | 'down' | 'pending'
@@ -40,7 +40,7 @@
   let password = ''
   let ticker: ReturnType<typeof setInterval>
 
-  async function load(pw?: string) {
+  async function load(pw = '') {
     const headers: Record<string, string> = {}
     if (pw) headers['X-Status-Password'] = pw
     const res = await fetch(`/api/public/status/${slug}/monitors/${monitorId}`, { headers })

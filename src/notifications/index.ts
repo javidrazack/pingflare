@@ -53,5 +53,6 @@ export async function sendNotification(
     case 'pagerduty':   return sendPagerDuty(config, payload, locale)
     case 'matrix':      return sendMatrix(config, payload, locale)
     case 'twilio':      return sendTwilio(config, payload, locale)
+    default: throw new Error(`Unsupported notification channel type: ${String(channel.type)}`)
   }
 }

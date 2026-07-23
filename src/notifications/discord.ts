@@ -1,5 +1,6 @@
 import type { NotificationPayload } from './index'
 import { typeLabel, metaFields } from './messages'
+import { assertResponseOk } from './http'
 
 export async function sendDiscord(
   config: Record<string, string>,
@@ -18,9 +19,10 @@ export async function sendDiscord(
     fields: metaFields(payload, locale),
   }
 
-  await fetch(config.webhookUrl, {
+  const response = await fetch(config.webhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ embeds: [embed] }),
   })
+  await assertResponseOk(response, 'Discord')
 }

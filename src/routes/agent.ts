@@ -2,9 +2,12 @@ import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { getDb, monitors, heartbeatTokens, statusLogs, alertState } from '../db'
 import { processAlert } from '../services/alert-manager'
+import { evaluateAgentPayload, parseAgentPayload } from '../services/agent-status'
+import { readJsonBodyWithLimit, RequestBodyTooLargeError } from '../request'
 import type { Env } from '../index'
 
 const router = new Hono<{ Bindings: Env }>()
+const MAX_AGENT_PAYLOAD_BYTES = 64 * 1024
 
 router.get('/install/:token', async (c) => {
   const db = getDb(c.env.DB)
@@ -66,7 +69,7 @@ if [ -z "$disk_usage" ]; then disk_usage="0"; fi
 
 docker_containers="[]"
 if command -v docker &> /dev/null; then
-  docker_containers=$(docker ps --format '{"id":"{{.ID}}", "name":"{{.Names}}", "status":"{{.State}}", "health":"{{.Status}}"}' | jq -s -c '.')
+  docker_containers=$(docker ps -a --format '{"id":"{{.ID}}", "name":"{{.Names}}", "status":"{{.State}}", "health":"{{.Status}}"}' | jq -s -c '.')
   if [ -z "$docker_containers" ]; then docker_containers="[]"; fi
 fi
 
@@ -80,15 +83,16 @@ PAYLOAD=$(cat <<JSON
 JSON
 )
 
-curl -s -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "${PINGFLARE_URL}/api/agent/push/${TOKEN}"
+curl -fsS --retry 3 --retry-delay 2 -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "\${PINGFLARE_URL}/api/agent/push/\${TOKEN}"
 AGENT_EOF
 
 chmod +x "$SCRIPT_PATH"
 
-crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" > /tmp/pingflare_cron || true
-echo "$CRON_SCHEDULE $SCRIPT_PATH >/dev/null 2>&1" >> /tmp/pingflare_cron
-crontab /tmp/pingflare_cron
-rm /tmp/pingflare_cron
+CRON_TMP=$(mktemp)
+trap 'rm -f "$CRON_TMP"' EXIT
+crontab -l 2>/dev/null | grep -v "$SCRIPT_PATH" > "$CRON_TMP" || true
+echo "$CRON_SCHEDULE $SCRIPT_PATH >/dev/null 2>&1" >> "$CRON_TMP"
+crontab "$CRON_TMP"
 
 $SCRIPT_PATH
 
@@ -121,40 +125,38 @@ router.post('/push/:token', async (c) => {
     return c.text('Not an agent monitor', 400)
   }
 
-  const body = await c.req.json()
+  let rawBody: unknown
+  try {
+    rawBody = await readJsonBodyWithLimit(c.req.raw, MAX_AGENT_PAYLOAD_BYTES)
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return c.json({ error: 'Agent payload is too large' }, 413)
+    }
+    return c.json({ error: 'Invalid JSON payload' }, 400)
+  }
+  const body = parseAgentPayload(rawBody)
+  if (!body) {
+    return c.json({ error: 'Invalid agent payload' }, 400)
+  }
   const now = Math.floor(Date.now() / 1000)
 
-  // Update last ping and metrics
-  await db.update(heartbeatTokens).set({ lastPingAt: now }).where(eq(heartbeatTokens.monitorId, monitor.id))
-  await db.update(monitors).set({ lastMetrics: JSON.stringify(body) }).where(eq(monitors.id, monitor.id))
+  const { status, message } = evaluateAgentPayload(monitor, body)
+  const snapshot = { ...body, status, message, evaluatedAt: now }
 
-  let isDown = false
-  let downReason = []
-
-  if (monitor.cpuThreshold && body.cpu > monitor.cpuThreshold) {
-    isDown = true
-    downReason.push(`CPU usage ${body.cpu}% exceeds threshold ${monitor.cpuThreshold}%`)
-  }
-  if (monitor.ramThreshold && body.ram > monitor.ramThreshold) {
-    isDown = true
-    downReason.push(`RAM usage ${body.ram}% exceeds threshold ${monitor.ramThreshold}%`)
-  }
-  if (monitor.diskThreshold && body.disk > monitor.diskThreshold) {
-    isDown = true
-    downReason.push(`Disk usage ${body.disk}% exceeds threshold ${monitor.diskThreshold}%`)
-  }
-
-  if (Array.isArray(body.docker)) {
-    for (const container of body.docker) {
-      if (container.status === 'exited' || container.status === 'dead' || container.health === 'unhealthy') {
-        isDown = true
-        downReason.push(`Docker container ${container.name} is ${container.status} (${container.health || 'no health'})`)
-      }
-    }
-  }
-
-  const status = isDown ? 'down' : 'up'
-  const message = isDown ? downReason.join(', ') : 'Agent metrics OK'
+  await db.update(heartbeatTokens)
+    .set({ lastPingAt: now })
+    .where(eq(heartbeatTokens.monitorId, monitor.id))
+  await db.update(monitors)
+    .set({ lastMetrics: JSON.stringify(snapshot), lastCheckedAt: now })
+    .where(eq(monitors.id, monitor.id))
+  await db.insert(statusLogs).values({
+    id: crypto.randomUUID(),
+    monitorId: monitor.id,
+    status,
+    message,
+    responseTimeMs: null,
+    checkedAt: now,
+  })
 
   await processAlert({
     db,

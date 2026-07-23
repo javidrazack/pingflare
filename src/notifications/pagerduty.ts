@@ -1,5 +1,6 @@
 import type { NotificationPayload } from './index'
 import { formatMessage } from './messages'
+import { assertResponseOk } from './http'
 
 export async function sendPagerDuty(config: Record<string, string>, payload: NotificationPayload, locale: string): Promise<void> {
   const { routingKey } = config
@@ -29,8 +30,5 @@ export async function sendPagerDuty(config: Record<string, string>, payload: Not
     body: JSON.stringify(body),
   })
 
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`PagerDuty error: ${res.status} ${err}`)
-  }
+  await assertResponseOk(res, 'PagerDuty')
 }

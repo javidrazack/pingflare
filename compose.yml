@@ -1,0 +1,23 @@
+services:
+  pingflare:
+    image: ghcr.io/butialabs/pingflare:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - ADMIN_USER=admin
+      - ADMIN_PASS=change-me
+      - JWT_SECRET=change-me
+      - ENCRYPTION_KEY=change-me
+      - DB_PATH=/data/pingflare.db
+      - PORT=3000
+    volumes:
+      - pingflare-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+volumes:
+  pingflare-data:

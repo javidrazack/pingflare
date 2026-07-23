@@ -1,5 +1,6 @@
 import type { NotificationPayload } from './index'
 import { formatMessage } from './messages'
+import { assertResponseOk } from './http'
 
 export async function sendApprise(
   config: Record<string, string>,
@@ -9,7 +10,7 @@ export async function sendApprise(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (config.token) headers['Authorization'] = `Bearer ${config.token}`
 
-  await fetch(`${config.url}/notify`, {
+  const response = await fetch(`${config.url}/notify`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -19,4 +20,5 @@ export async function sendApprise(
       type: payload.status === 'up' ? 'success' : 'failure',
     }),
   })
+  await assertResponseOk(response, 'Apprise')
 }

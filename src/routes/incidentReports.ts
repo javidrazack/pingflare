@@ -10,12 +10,18 @@ router.use('*', requireAuth)
 router.get('/', async (c) => {
   const db = getDb(c.env.DB)
   const rows = await db.select().from(incidentReports).orderBy(desc(incidentReports.startedAt)).limit(100)
-  const enriched = await Promise.all(rows.map(async (inc) => {
-    const links = await db.select().from(incidentMonitors).where(eq(incidentMonitors.incidentId, inc.id))
-    const updates = await db.select().from(incidentUpdates)
-      .where(eq(incidentUpdates.incidentId, inc.id))
-      .orderBy(desc(incidentUpdates.createdAt))
-    return { ...inc, monitorIds: links.map(r => r.monitorId), updates }
+  if (rows.length === 0) return c.json([])
+  const ids = rows.map(row => row.id)
+  const [links, updates] = await Promise.all([
+    db.select().from(incidentMonitors).where(inArray(incidentMonitors.incidentId, ids)),
+    db.select().from(incidentUpdates)
+      .where(inArray(incidentUpdates.incidentId, ids))
+      .orderBy(desc(incidentUpdates.createdAt)),
+  ])
+  const enriched = rows.map(inc => ({
+    ...inc,
+    monitorIds: links.filter(row => row.incidentId === inc.id).map(row => row.monitorId),
+    updates: updates.filter(row => row.incidentId === inc.id),
   }))
   return c.json(enriched)
 })
@@ -73,10 +79,11 @@ router.put('/:id', async (c) => {
   const existing = await db.query.incidentReports.findFirst({ where: eq(incidentReports.id, id) })
   if (!existing) return c.json({ error: 'Not found' }, 404)
 
-  const resolvedAt = body.status === 'resolved' && !existing.resolvedAt ? now : existing.resolvedAt
+  const nextStatus = body.status ?? existing.status
+  const resolvedAt = nextStatus === 'resolved' ? (existing.resolvedAt ?? now) : null
   await db.update(incidentReports).set({
     title: body.title ?? existing.title,
-    status: body.status ?? existing.status,
+    status: nextStatus,
     resolvedAt,
   }).where(eq(incidentReports.id, id))
 
@@ -108,7 +115,7 @@ router.post('/:id/updates', async (c) => {
     status: body.status,
   })
 
-  const resolvedAt = body.status === 'resolved' && !incident.resolvedAt ? now : incident.resolvedAt
+  const resolvedAt = body.status === 'resolved' ? (incident.resolvedAt ?? now) : null
   await db.update(incidentReports).set({ status: body.status, resolvedAt }).where(eq(incidentReports.id, incidentId))
 
   const update = await db.query.incidentUpdates.findFirst({ where: eq(incidentUpdates.id, updateId) })

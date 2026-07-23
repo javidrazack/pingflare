@@ -1,7 +1,10 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, gte, lte } from 'drizzle-orm'
 import type { Db } from '../db'
-import { alertState, monitors, incidents, monitorNotifications, notificationChannels, settings, maintenanceWindows } from '../db/schema'
-import { and, lte, gte } from 'drizzle-orm'
+
+let cachedLocale: string | null = null
+let cachedLocaleAt = 0
+const LOCALE_TTL_MS = 5 * 60 * 1000
+import { alertState, incidents, maintenanceWindows, monitorNotifications, monitors, notificationChannels, settings } from '../db/schema'
 import type { Monitor, AlertState, NotificationChannel } from '../db/schema'
 import { sendNotification } from '../notifications'
 import type { NotificationPayload } from '../notifications'
@@ -28,10 +31,8 @@ export async function processAlert(ctx: AlertContext): Promise<void> {
   })
 
   if (activeMaintenance) {
-    // Suppress alerts and state changes during maintenance
     await db.update(monitors).set({
       lastCheckedAt: now,
-      lastStatus: status,
     }).where(eq(monitors.id, monitor.id))
     return
   }
@@ -77,21 +78,16 @@ export async function processAlert(ctx: AlertContext): Promise<void> {
       : (monitor.toleranceFailures ?? 1)
 
     if (newFailures < tolerance) {
-      await db.update(monitors)
-        .set({ lastCheckedAt: now })
-        .where(eq(monitors.id, monitor.id))
+      await updateMonitorStatus(db, monitor.id, now, prevStatus)
       return
     }
 
     if (state.surgePausedUntil && now < state.surgePausedUntil) {
-      await updateMonitorStatus(db, monitor.id, 'down', now)
+      await updateMonitorStatus(db, monitor.id, now, 'down')
       return
     }
 
-    await updateMonitorStatus(db, monitor.id, 'down', now)
-
     if (prevStatus !== 'down') {
-      await openIncident(db, monitor.id, now)
       const payload: NotificationPayload = {
         type: 'alert',
         monitor: { id: monitor.id, name: monitor.name, type: monitor.type, url: monitor.url },
@@ -101,6 +97,7 @@ export async function processAlert(ctx: AlertContext): Promise<void> {
         locale,
       }
       await dispatchToChannels(channels, payload, encryptionKey)
+      await openIncident(db, monitor.id, now)
       await db.update(alertState)
         .set({ alertSentAt: now, consecutiveAlerts: (state.consecutiveAlerts ?? 0) + 1, lastReminderAt: now })
         .where(eq(alertState.monitorId, monitor.id))
@@ -133,25 +130,13 @@ export async function processAlert(ctx: AlertContext): Promise<void> {
         }
       }
     }
+    await updateMonitorStatus(db, monitor.id, now, 'down')
 
   } else {
     const wasDown = prevStatus === 'down'
-
-    await db.update(alertState)
-      .set({
-        consecutiveFailures: 0,
-        consecutiveMissed: 0,
-        alertSentAt: null,
-        consecutiveAlerts: 0,
-        lastReminderAt: null,
-        surgePausedUntil: null,
-      })
-      .where(eq(alertState.monitorId, monitor.id))
-
     const orphanedIncident = !wasDown ? await getOpenIncident(db, monitor.id) : null
 
     if (wasDown || orphanedIncident) {
-      await closeIncident(db, monitor.id, now)
       const payload: NotificationPayload = {
         type: 'recovery',
         monitor: { id: monitor.id, name: monitor.name, type: monitor.type, url: monitor.url },
@@ -161,9 +146,29 @@ export async function processAlert(ctx: AlertContext): Promise<void> {
         locale,
       }
       await dispatchToChannels(channels, payload, encryptionKey)
+      await closeIncident(db, monitor.id, now)
     }
 
-    await updateMonitorStatus(db, monitor.id, 'up', now)
+    const needsReset = state.consecutiveFailures !== 0
+      || state.consecutiveMissed !== 0
+      || state.alertSentAt !== null
+      || state.consecutiveAlerts !== 0
+      || state.lastReminderAt !== null
+      || state.surgePausedUntil !== null
+
+    if (needsReset) {
+      await db.update(alertState)
+        .set({
+          consecutiveFailures: 0,
+          consecutiveMissed: 0,
+          alertSentAt: null,
+          consecutiveAlerts: 0,
+          lastReminderAt: null,
+          surgePausedUntil: null,
+        })
+        .where(eq(alertState.monitorId, monitor.id))
+    }
+    await updateMonitorStatus(db, monitor.id, now, 'up')
   }
 }
 
@@ -177,21 +182,33 @@ async function getChannels(db: Db, monitorId: string): Promise<NotificationChann
 }
 
 async function dispatchToChannels(channels: NotificationChannel[], payload: NotificationPayload, encryptionKey?: string) {
-  await Promise.allSettled(channels.map(ch => sendNotification(ch, payload, encryptionKey)))
-}
-
-async function updateMonitorStatus(db: Db, monitorId: string, status: 'up' | 'down', now: number) {
-  await db.update(monitors)
-    .set({ lastStatus: status, lastCheckedAt: now })
-    .where(eq(monitors.id, monitorId))
+  const results = await Promise.allSettled(channels.map(ch => sendNotification(ch, payload, encryptionKey)))
+  const failures = results
+    .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+    .map(result => result.reason)
+  if (failures.length > 0) {
+    throw new AggregateError(failures, `${failures.length} notification channel(s) failed`)
+  }
 }
 
 async function openIncident(db: Db, monitorId: string, now: number) {
+  if (await getOpenIncident(db, monitorId)) return
   await db.insert(incidents).values({
     id: crypto.randomUUID(),
     monitorId,
     startedAt: now,
   })
+}
+
+async function updateMonitorStatus(
+  db: Db,
+  monitorId: string,
+  now: number,
+  status: 'pending' | 'up' | 'down'
+) {
+  await db.update(monitors)
+    .set({ lastCheckedAt: now, lastStatus: status })
+    .where(eq(monitors.id, monitorId))
 }
 
 async function getOpenIncident(db: Db, monitorId: string) {
@@ -209,6 +226,9 @@ async function closeIncident(db: Db, monitorId: string, now: number) {
 }
 
 export async function getLocale(db: Db): Promise<string> {
+  if (cachedLocale && Date.now() - cachedLocaleAt < LOCALE_TTL_MS) return cachedLocale
   const row = await db.query.settings.findFirst({ where: eq(settings.key, 'locale') })
-  return row?.value ?? 'en'
+  cachedLocale = row?.value ?? 'en'
+  cachedLocaleAt = Date.now()
+  return cachedLocale
 }

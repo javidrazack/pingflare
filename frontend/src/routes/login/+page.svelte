@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api } from '$lib/api'
+  import { api, ApiError } from '$lib/api'
   import { token } from '$lib/stores'
   import { t, locale, localeOptions } from '$lib/i18n'
   import { goto } from '$app/navigation'
@@ -24,7 +24,9 @@
       token.set(res.token)
       goto('/')
     } catch (e) {
-      error = $t('login.invalidCreds')
+      error = e instanceof ApiError && e.code === 'INVALID_CREDENTIALS'
+        ? $t('login.invalidCreds')
+        : e instanceof Error ? e.message : String(e)
     } finally {
       loading = false
     }

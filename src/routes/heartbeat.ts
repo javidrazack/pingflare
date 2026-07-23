@@ -23,7 +23,9 @@ async function handleHeartbeat(c: Context<{ Bindings: Env }>) {
     where: eq(monitors.id, hb.monitorId),
   })
 
-  if (!monitor || !monitor.active) return c.json({ error: 'Monitor not active' }, 400)
+  if (!monitor || monitor.type !== 'heartbeat' || !monitor.active) {
+    return c.json({ error: 'Heartbeat monitor not active' }, 400)
+  }
 
   const locale = await getLocale(db)
   const receivedMsg = msgHeartbeatReceived(locale)
@@ -31,6 +33,9 @@ async function handleHeartbeat(c: Context<{ Bindings: Env }>) {
   await db.update(heartbeatTokens)
     .set({ lastPingAt: now })
     .where(eq(heartbeatTokens.token, token))
+  await db.update(monitors)
+    .set({ lastCheckedAt: now })
+    .where(eq(monitors.id, monitor.id))
 
   await db.insert(statusLogs).values({
     id: crypto.randomUUID(),
@@ -41,7 +46,13 @@ async function handleHeartbeat(c: Context<{ Bindings: Env }>) {
     checkedAt: now,
   })
 
-  await processAlert({ db, monitor, status: 'up', message: receivedMsg })
+  await processAlert({
+    db,
+    monitor,
+    status: 'up',
+    message: receivedMsg,
+    encryptionKey: c.env.ENCRYPTION_KEY,
+  })
 
   await db.update(alertState)
     .set({ consecutiveMissed: 0, alertSentAt: null, consecutiveAlerts: 0, surgePausedUntil: null })

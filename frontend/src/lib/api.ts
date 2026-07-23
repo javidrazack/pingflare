@@ -1,5 +1,16 @@
 const BASE = '/api'
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
 function getToken(): string | null {
   if (typeof localStorage === 'undefined') return null
   return localStorage.getItem('token')
@@ -15,15 +26,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const res = await fetch(`${BASE}${path}`, { ...init, headers })
 
-  if (res.status === 401) {
+  if (res.status === 401 && path !== '/auth/login') {
     localStorage.removeItem('token')
     window.location.href = '/login'
-    throw new Error('Unauthorized')
+    throw new ApiError('Unauthorized', 401, 'UNAUTHORIZED')
   }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`)
+    const errorBody = body as { error?: string; code?: string }
+    throw new ApiError(errorBody.error ?? `HTTP ${res.status}`, res.status, errorBody.code)
   }
 
   if (res.status === 204) return undefined as T
@@ -55,6 +67,7 @@ export const api = {
     checkCount:  (id: string) => request<{ count: number }>(`/monitors/${id}/check-count`),
     incidents:   (id: string) => request<Incident[]>(`/monitors/${id}/incidents`),
     uptime:      (id: string, days = 90) => request<{ uptime: number | null; days: number }>(`/monitors/${id}/uptime?days=${days}`),
+    uptimeSummary: (days = 30) => request<{ days: number; uptimes: Record<string, number | null> }>(`/monitors/uptime-summary?days=${days}`),
     daily:       (id: string, days = 90) => request<DailyUptime[]>(`/monitors/${id}/daily?days=${days}`),
   },
 
@@ -109,7 +122,7 @@ export const api = {
 export interface Monitor {
   id: string
   name: string
-  type: 'http' | 'heartbeat' | 'agent'
+  type: 'http' | 'heartbeat' | 'agent' | 'dns' | 'ping'
   tags: string
   interval: number
   active: boolean
@@ -142,6 +155,10 @@ export interface Monitor {
   ramThreshold: number | null
   diskThreshold: number | null
   lastMetrics: string | null
+  dnsHostname: string | null
+  dnsRecordType: string | null
+  dnsResolverUrl: string | null
+  dnsExpectedIp: string | null
   createdAt: number
   updatedAt: number
 }
@@ -169,7 +186,7 @@ export interface Incident {
 export interface NotificationChannel {
   id: string
   name: string
-  type: 'discord' | 'slack' | 'telegram' | 'email' | 'ntfy' | 'pushover' | 'webhook' | 'apprise' | 'googlechat'
+  type: 'discord' | 'slack' | 'telegram' | 'email' | 'ntfy' | 'pushover' | 'webhook' | 'apprise' | 'googlechat' | 'msteams' | 'matrix' | 'pagerduty' | 'twilio'
   config: string
   active: boolean
   isDefault: boolean
@@ -255,4 +272,11 @@ export interface BackupData {
   monitors: (Monitor & { channelIds: string[] })[]
   notifications: NotificationChannel[]
   statusPages: (StatusPage & { monitorIds: string[] })[]
+  maintenanceWindows?: Array<{
+    id: string
+    monitorId: string
+    startAt: number
+    endAt: number
+    reason: string | null
+  }>
 }

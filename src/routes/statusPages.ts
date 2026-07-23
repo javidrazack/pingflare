@@ -8,10 +8,14 @@ import type { Env } from '../index'
 const router = new Hono<{ Bindings: Env }>()
 router.use('*', requireAuth)
 
+function sanitizePage<T extends typeof statusPages.$inferSelect>(page: T): T {
+  return { ...page, passwordHash: page.passwordHash ? 'configured' : null }
+}
+
 router.get('/', async (c) => {
   const db = getDb(c.env.DB)
   const rows = await db.select().from(statusPages)
-  return c.json(rows)
+  return c.json(rows.map(sanitizePage))
 })
 
 router.post('/', async (c) => {
@@ -38,14 +42,14 @@ router.post('/', async (c) => {
   }
 
   const created = await db.query.statusPages.findFirst({ where: eq(statusPages.id, id) })
-  return c.json(created, 201)
+  return c.json(sanitizePage(created!), 201)
 })
 
 router.get('/:id', async (c) => {
   const db = getDb(c.env.DB)
   const page = await db.query.statusPages.findFirst({ where: eq(statusPages.id, c.req.param('id')) })
   if (!page) return c.json({ error: 'Not found' }, 404)
-  return c.json(page)
+  return c.json(sanitizePage(page))
 })
 
 router.put('/:id', async (c) => {
@@ -78,7 +82,7 @@ router.put('/:id', async (c) => {
   }
 
   const updated = await db.query.statusPages.findFirst({ where: eq(statusPages.id, id) })
-  return c.json(updated)
+  return c.json(sanitizePage(updated!))
 })
 
 router.delete('/:id', async (c) => {

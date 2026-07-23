@@ -27,9 +27,14 @@ Obtain a token by calling `POST /api/auth/login`
 | GET | `/api/monitors/:id/incidents` | Downtime incidents |
 | GET | `/api/monitors/:id/uptime` | Uptime percentage, supports `?days=90` |
 | GET | `/api/monitors/:id/daily` | Per-day uptime breakdown, supports `?days=90` |
+| GET | `/api/monitors/uptime-summary` | Batched uptime percentages, supports `?days=30` |
+| GET | `/api/monitors/:id/check-count` | Total number of recorded checks |
 | GET | `/api/monitors/:id/heartbeat-token` | Get heartbeat token |
 | POST | `/api/monitors/:id/heartbeat-token/regenerate` | Rotate heartbeat token |
 | GET | `/api/monitors/:id/channels` | Notification channel IDs linked to the monitor |
+| POST | `/api/monitors/:id/reset-stats` | Clear logs/incidents and reset alert state |
+| GET/POST | `/api/monitors/:id/maintenance` | List or create maintenance windows |
+| DELETE | `/api/monitors/:id/maintenance/:maintenanceId` | Delete a maintenance window |
 
 ---
 
@@ -38,6 +43,13 @@ Obtain a token by calling `POST /api/auth/login`
 | Method | Path | Description |
 |---|---|---|
 | GET or POST | `/h/:token` | Register a heartbeat ping |
+
+## Infrastructure Agent
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/agent/install/:token` | Generated installation script for an agent monitor |
+| POST | `/api/agent/push/:token` | Submit CPU, RAM, disk, and Docker metrics |
 
 ---
 
@@ -50,6 +62,7 @@ Obtain a token by calling `POST /api/auth/login`
 | PUT | `/api/notifications/:id` | Update a channel |
 | DELETE | `/api/notifications/:id` | Delete a channel |
 | POST | `/api/notifications/:id/test` | Send a test notification |
+| POST | `/api/notifications/:id/apply-all-monitors` | Link the channel to all monitors |
 
 ---
 
@@ -62,6 +75,7 @@ Obtain a token by calling `POST /api/auth/login`
 | PUT | `/api/status-pages/:id` | Update a status page |
 | DELETE | `/api/status-pages/:id` | Delete a status page |
 | GET | `/api/public/status/:slug` | Public data for a status page |
+| GET | `/api/public/status/:slug/monitors/:monitorId` | Public monitor detail |
 
 ---
 
@@ -83,8 +97,6 @@ Obtain a token by calling `POST /api/auth/login`
 
 ```
 Authorization: Bearer <token>
-# or
-GET /api/events?token=<token>
 ```
 
 ### Events emitted
@@ -124,6 +136,11 @@ Required fields per type:
 | `pushover` | `token`, `user` |
 | `webhook` | `url` - optional: `secret` (sent as `X-Pingflare-Secret` header) |
 | `apprise` | `url` (Apprise API base URL), `urls` (notification service URLs) - optional: `token` |
+| `googlechat` | `webhookUrl` |
+| `msteams` | `webhookUrl` |
+| `matrix` | `homeserverUrl`, `accessToken`, `roomId` |
+| `pagerduty` | `routingKey` |
+| `twilio` | `accountSid`, `authToken`, `fromNumber`, `toNumber` |
 
 ---
 
@@ -134,12 +151,11 @@ Required fields per type:
 | Field | Default | Description |
 |---|---|---|
 | `name` | - | Display name |
-| `type` | - | `http` or `heartbeat` |
+| `type` | - | `http`, `heartbeat`, `agent`, `dns`, or `ping` |
 | `interval` | `60` | Check interval in seconds |
 | `active` | `true` | Whether the monitor is enabled |
 | `toleranceFailures` | `1` | Consecutive failures before alerting |
 | `reminderIntervalHours` | null | Hours between reminder alerts while down |
-| `callbacksEnabled` | `false` | Send a notification on every check result |
 | `surgeProtectionLimit` | null | Max alerts before pausing for 1 hour |
 
 ### HTTP-specific
@@ -154,6 +170,8 @@ Required fields per type:
 | `authType` | `none` | `none`, `basic`, `digest`, or `bearer` |
 | `headers` | `{}` | Custom request headers as JSON object |
 | `body` | null | Request body for POST/PUT/PATCH |
+| `jsonPath` | null | Optional JSONPath assertion |
+| `expectedValue` | null | Optional expected value for the first JSONPath match |
 
 ### Heartbeat-specific
 
@@ -162,3 +180,25 @@ Required fields per type:
 | `heartbeatInterval` | - | Expected interval between pings in seconds |
 | `heartbeatGrace` | `30` | Grace period after deadline before marking down |
 | `toleranceMissed` | `1` | Consecutive missed heartbeats before alerting |
+
+Agent monitors use the heartbeat fields above and add optional `cpuThreshold`, `ramThreshold`, and `diskThreshold` percentages.
+
+### DNS-specific
+
+| Field | Default | Description |
+|---|---|---|
+| `dnsHostname` | - | Hostname to resolve |
+| `dnsRecordType` | `A` | DNS record type |
+| `dnsResolverUrl` | provider default | DNS-over-HTTPS resolver |
+| `dnsExpectedIp` | null | Optional exact expected answer |
+
+### Ping-specific
+
+Ping monitors use `url` as the target and treat any HTTP response as reachable.
+
+## Backup
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/backup` | Export a versioned configuration backup |
+| POST | `/api/backup/restore` | Validate and atomically restore a backup |
