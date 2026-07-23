@@ -143,7 +143,7 @@
   let copiedInstall = false
   async function copyInstall() {
     if (!hbToken) return
-    await navigator.clipboard.writeText(`curl -s ${location.origin}/api/agent/install/${hbToken} | bash`)
+    await navigator.clipboard.writeText(`curl -fsSL ${location.origin}/api/agent/install/${hbToken} | sudo bash`)
     copiedInstall = true
     setTimeout(() => copiedInstall = false, 2000)
   }
@@ -396,13 +396,13 @@
       <div>
         <h2 class="text-sm font-semibold" style="color: rgb(var(--text))">Agent Installation</h2>
         <p class="text-xs mt-0.5" style="color: rgb(var(--text-muted))">
-          Run this command on your server to automatically install the Pingflare agent via cron.
+          Run this command as a sudo-capable user. It installs a systemd timer, or cron as a fallback.
         </p>
       </div>
       <div class="flex flex-col sm:flex-row gap-2">
         <code class="flex-1 input text-xs font-mono truncate"
           style="background-color: rgb(var(--bg-subtle))">
-          curl -s {location.origin}/api/agent/install/{hbToken} | bash
+          curl -fsSL {location.origin}/api/agent/install/{hbToken} | sudo bash
         </code>
         <div class="flex gap-2">
           <button class="btn-outline text-xs flex-1 sm:flex-none justify-center" on:click={copyInstall}>
