@@ -52,18 +52,18 @@ fi
 install_dependencies() {
   if command -v apt-get >/dev/null 2>&1; then
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y coreutils curl gawk jq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y coreutils curl gawk jq util-linux
     if [ "$has_systemd" = false ]; then
       DEBIAN_FRONTEND=noninteractive apt-get install -y cron
     fi
   elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y coreutils curl gawk jq
+    dnf install -y coreutils curl gawk jq util-linux
     if [ "$has_systemd" = false ]; then dnf install -y cronie; fi
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y coreutils curl gawk jq
+    yum install -y coreutils curl gawk jq util-linux
     if [ "$has_systemd" = false ]; then yum install -y cronie; fi
   elif command -v apk >/dev/null 2>&1; then
-    apk add --no-cache coreutils curl gawk jq
+    apk add --no-cache coreutils curl gawk jq util-linux
     if [ "$has_systemd" = false ]; then apk add --no-cache dcron; fi
   else
     fail "curl, jq, and a scheduler are required; no supported package manager was found"
@@ -71,7 +71,7 @@ install_dependencies() {
 }
 
 dependencies_missing=false
-for command_name in curl jq awk df install; do
+for command_name in curl jq awk df flock install mktemp mv rm sleep; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     dependencies_missing=true
   fi
@@ -85,7 +85,7 @@ if [ "$dependencies_missing" = true ]; then
   install_dependencies
 fi
 
-for command_name in curl jq awk df install; do
+for command_name in curl jq awk df flock install mktemp mv rm sleep; do
   command -v "$command_name" >/dev/null 2>&1 ||
     fail "required command '$command_name' is unavailable"
 done
@@ -111,43 +111,131 @@ umask 077
 
 readonly PUSH_URL=${quoteForBash(pushUrl)}
 readonly HEARTBEAT_SENTINEL="PINGFLARE_HEARTBEAT_ACCEPTED"
+readonly CPU_STATE_DIR="/run/pingflare-agent"
+readonly CPU_STATE_PATH="$CPU_STATE_DIR/cpu.state"
+readonly CPU_RUN_LOCK_PATH="$CPU_STATE_DIR/agent.lock"
+readonly CPU_STATE_VERSION="v1"
+readonly BOOT_ID_PATH="/proc/sys/kernel/random/boot_id"
 
 cpu_sample() {
   awk '/^cpu / {
     idle = $5 + $6
     total = 0
-    for (field = 2; field <= NF; field++) total += $field
+    for (field = 2; field <= 9 && field <= NF; field++) total += $field
     print total, idle
     exit
   }' /proc/stat
 }
 
+valid_cpu_sample() {
+  [[ "\${1:-}" =~ ^[0-9]+$ ]] && [[ "\${2:-}" =~ ^[0-9]+$ ]]
+}
+
+calculate_cpu_usage() {
+  awk \
+    -v total_before="$1" \
+    -v idle_before="$2" \
+    -v total_after="$3" \
+    -v idle_after="$4" \
+    'BEGIN {
+      total = total_after - total_before
+      idle = idle_after - idle_before
+      if (total <= 0 || idle < 0 || idle > total) exit 1
+      value = 100 * (total - idle) / total
+      if (value < 0) value = 0
+      if (value > 100) value = 100
+      printf "%.2f", value
+    }'
+}
+
+write_cpu_state() {
+  local total="$1"
+  local idle="$2"
+  local state_tmp
+
+  state_tmp=$(mktemp "$CPU_STATE_DIR/cpu.state.XXXXXX") || return 1
+  if ! printf '%s %s %s %s\\n' \
+    "$CPU_STATE_VERSION" "$boot_id" "$total" "$idle" > "$state_tmp"; then
+    rm -f "$state_tmp"
+    return 1
+  fi
+  if ! mv -f "$state_tmp" "$CPU_STATE_PATH"; then
+    rm -f "$state_tmp"
+    return 1
+  fi
+}
+
+cpu_state_ready=false
+if install -d -m 0700 "$CPU_STATE_DIR" 2>/dev/null; then
+  cpu_state_ready=true
+  exec 9>"$CPU_RUN_LOCK_PATH"
+  if ! flock -n 9; then
+    echo "Pingflare agent is already running; skipping this invocation." >&2
+    exit 0
+  fi
+else
+  echo "Warning: CPU state cannot be persisted; using one-second sampling." >&2
+fi
+
+boot_id=""
+if [ -r "$BOOT_ID_PATH" ]; then
+  IFS= read -r boot_id < "$BOOT_ID_PATH" || boot_id=""
+fi
+
 cpu_usage=0
 if [ -r /proc/stat ]; then
-  IFS=' ' read -r cpu_total_before cpu_idle_before <<< "$(cpu_sample)"
-  sleep 1
-  IFS=' ' read -r cpu_total_after cpu_idle_after <<< "$(cpu_sample)"
-  if [[ "\${cpu_total_before:-}" =~ ^[0-9]+$ ]] &&
-     [[ "\${cpu_idle_before:-}" =~ ^[0-9]+$ ]] &&
-     [[ "\${cpu_total_after:-}" =~ ^[0-9]+$ ]] &&
-     [[ "\${cpu_idle_after:-}" =~ ^[0-9]+$ ]]; then
-    cpu_usage=$(awk \
-      -v total_before="$cpu_total_before" \
-      -v idle_before="$cpu_idle_before" \
-      -v total_after="$cpu_total_after" \
-      -v idle_after="$cpu_idle_after" \
-      'BEGIN {
-        total = total_after - total_before
-        idle = idle_after - idle_before
-        if (total <= 0) {
-          print "0"
-          exit
-        }
-        value = 100 * (total - idle) / total
-        if (value < 0) value = 0
-        if (value > 100) value = 100
-        printf "%.2f", value
-      }')
+  IFS=' ' read -r cpu_total_current cpu_idle_current <<< "$(cpu_sample)"
+  if valid_cpu_sample "$cpu_total_current" "$cpu_idle_current"; then
+    state_total="$cpu_total_current"
+    state_idle="$cpu_idle_current"
+    used_persisted_sample=false
+
+    previous_version=""
+    previous_boot_id=""
+    cpu_total_previous=""
+    cpu_idle_previous=""
+    previous_extra=""
+    if [ "$cpu_state_ready" = true ] && [ -r "$CPU_STATE_PATH" ]; then
+      IFS=' ' read -r \
+        previous_version previous_boot_id cpu_total_previous cpu_idle_previous previous_extra \
+          < "$CPU_STATE_PATH" || true
+    fi
+
+    if [ "$previous_version" = "$CPU_STATE_VERSION" ] &&
+       [ -n "$boot_id" ] &&
+       [ "$previous_boot_id" = "$boot_id" ] &&
+       [ -z "$previous_extra" ] &&
+       valid_cpu_sample "$cpu_total_previous" "$cpu_idle_previous"; then
+      if cpu_usage=$(calculate_cpu_usage \
+        "$cpu_total_previous" "$cpu_idle_previous" \
+        "$cpu_total_current" "$cpu_idle_current"); then
+        used_persisted_sample=true
+      fi
+    fi
+
+    if [ "$used_persisted_sample" = false ]; then
+      cpu_total_before="$cpu_total_current"
+      cpu_idle_before="$cpu_idle_current"
+      sleep 1
+      IFS=' ' read -r cpu_total_after cpu_idle_after <<< "$(cpu_sample)"
+      if valid_cpu_sample "$cpu_total_after" "$cpu_idle_after"; then
+        state_total="$cpu_total_after"
+        state_idle="$cpu_idle_after"
+        if ! cpu_usage=$(calculate_cpu_usage \
+          "$cpu_total_before" "$cpu_idle_before" \
+          "$cpu_total_after" "$cpu_idle_after"); then
+          cpu_usage=0
+          echo "Warning: CPU counters did not advance normally." >&2
+        fi
+      else
+        echo "Warning: could not parse the follow-up CPU sample." >&2
+      fi
+    fi
+
+    if [ "$cpu_state_ready" = true ] &&
+       ! write_cpu_state "$state_total" "$state_idle"; then
+      echo "Warning: could not update CPU state; the next run will sample for one second." >&2
+    fi
   else
     echo "Warning: could not parse CPU counters from /proc/stat." >&2
   fi

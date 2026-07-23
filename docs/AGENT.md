@@ -4,7 +4,7 @@ Pingflare provides a simple, zero-hassle bash script agent to monitor your infra
 
 ## What it Monitors
 The agent runs every minute and collects:
-1. **CPU Usage**: Calculated from `/proc/stat`.
+1. **CPU Usage**: Calculated from the change in `/proc/stat` counters since the previous heartbeat. This represents average CPU utilization over the heartbeat interval; the first run after installation or reboot uses a one-second sample to seed the counters.
 2. **RAM Usage**: Calculated from `/proc/meminfo`.
 3. **Disk Usage**: Extracted via `df` (checks the root `/` mount).
 4. **Docker Containers**: Extracts running and stopped container statuses via `docker ps -a` and `jq`.
@@ -31,6 +31,8 @@ The install script will:
 - Install the root-only agent at `/opt/pingflare-agent/agent.sh`.
 - Immediately send and verify the first heartbeat.
 - Prefer a `pingflare-agent.timer` systemd timer, with a root crontab fallback when systemd is unavailable.
+
+The agent keeps only its last CPU counters in `/run/pingflare-agent/cpu.state`. This state is a small, root-only file stored in memory-backed runtime storage and is cleared on reboot. Missing, stale, corrupt, or rolled-back counters automatically fall back to a one-second sample. A non-blocking execution lock prevents overlapping cron runs from racing or sending snapshots out of order.
 
 The generated installation URL contains the agent token. Treat the URL and installed script as credentials and do not publish them.
 
