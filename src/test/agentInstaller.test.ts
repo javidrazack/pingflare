@@ -30,6 +30,26 @@ describe('agent installer generation', () => {
     expect(result.status, result.stderr).toBe(0)
   })
 
+  it('splits large CPU counters explicitly and avoids shell arithmetic', () => {
+    expect(script).toContain(
+      `IFS=' ' read -r cpu_total_before cpu_idle_before <<< "$(cpu_sample)"`,
+    )
+    expect(script).toContain(
+      `IFS=' ' read -r cpu_total_after cpu_idle_after <<< "$(cpu_sample)"`,
+    )
+    expect(script).toContain('-v total_before="$cpu_total_before"')
+    expect(script).not.toContain('cpu_delta=$((')
+
+    const parseProbe = spawnSync('bash', ['-c', `
+      set -Eeuo pipefail
+      IFS=$'\\n\\t'
+      IFS=' ' read -r total idle <<< "2464352180 2454232902"
+      test "$total" = "2464352180"
+      test "$idle" = "2454232902"
+    `], { encoding: 'utf8' })
+    expect(parseProbe.status, parseProbe.stderr).toBe(0)
+  })
+
   it('embeds the complete push URL in the installed agent', () => {
     expect(script).toContain(
       `readonly PUSH_URL='${origin}/api/agent/push/${token}'`,
@@ -44,15 +64,27 @@ describe('agent installer generation', () => {
     expect(script).toContain('crontab "$cron_tmp"')
     expect(script).toContain('the cron daemon could not be started')
     expect(script).toContain('grep -v -F "$SCRIPT_PATH"')
+    expect(script).toContain('systemctl disable --now pingflare-agent.timer')
   })
 
   it('only reports success after the first heartbeat and scheduler setup', () => {
     const firstHeartbeat = script.indexOf('Sending the first infrastructure heartbeat')
+    const existingTimerStop = script.indexOf('systemctl disable --now pingflare-agent.timer')
+    const existingCronRemoval = script.indexOf('previous_cron=$(mktemp)')
+    const sentinelCheck = script.indexOf(
+      'first_heartbeat_result" != "PINGFLARE_HEARTBEAT_ACCEPTED"',
+    )
     const schedulerSetup = script.indexOf('systemctl enable --now pingflare-agent.timer')
     const successMessage = script.indexOf('Pingflare agent installed successfully')
 
     expect(firstHeartbeat).toBeGreaterThan(-1)
-    expect(schedulerSetup).toBeGreaterThan(firstHeartbeat)
+    expect(existingTimerStop).toBeLessThan(firstHeartbeat)
+    expect(existingCronRemoval).toBeLessThan(firstHeartbeat)
+    expect(script).toContain('"$SCRIPT_PATH" --verify')
+    expect(script).toContain('the first heartbeat request was rejected')
+    expect(script).toContain('the agent did not confirm that the first heartbeat was accepted')
+    expect(sentinelCheck).toBeGreaterThan(firstHeartbeat)
+    expect(schedulerSetup).toBeGreaterThan(sentinelCheck)
     expect(successMessage).toBeGreaterThan(schedulerSetup)
   })
 

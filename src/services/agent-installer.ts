@@ -46,6 +46,7 @@ echo "Installing Pingflare Agent..."
 has_systemd=false
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
   has_systemd=true
+  systemctl disable --now pingflare-agent.timer >/dev/null 2>&1 || true
 fi
 
 install_dependencies() {
@@ -93,6 +94,13 @@ if [ "$has_systemd" = false ]; then
     fail "neither systemd nor crontab is available"
 fi
 
+if command -v crontab >/dev/null 2>&1; then
+  previous_cron=$(mktemp)
+  crontab -l 2>/dev/null | grep -v -F "$SCRIPT_PATH" > "$previous_cron" || true
+  crontab "$previous_cron"
+  rm -f "$previous_cron"
+fi
+
 install -d -m 0700 "$INSTALL_DIR"
 
 cat > "$SCRIPT_PATH" <<'AGENT_EOF'
@@ -102,6 +110,7 @@ IFS=$'\\n\\t'
 umask 077
 
 readonly PUSH_URL=${quoteForBash(pushUrl)}
+readonly HEARTBEAT_SENTINEL="PINGFLARE_HEARTBEAT_ACCEPTED"
 
 cpu_sample() {
   awk '/^cpu / {
@@ -115,19 +124,32 @@ cpu_sample() {
 
 cpu_usage=0
 if [ -r /proc/stat ]; then
-  read -r cpu_total_before cpu_idle_before <<< "$(cpu_sample)"
+  IFS=' ' read -r cpu_total_before cpu_idle_before <<< "$(cpu_sample)"
   sleep 1
-  read -r cpu_total_after cpu_idle_after <<< "$(cpu_sample)"
-  cpu_delta=$((cpu_total_after - cpu_total_before))
-  idle_delta=$((cpu_idle_after - cpu_idle_before))
-  if [ "$cpu_delta" -gt 0 ]; then
-    cpu_usage=$(awk -v total="$cpu_delta" -v idle="$idle_delta" \
+  IFS=' ' read -r cpu_total_after cpu_idle_after <<< "$(cpu_sample)"
+  if [[ "\${cpu_total_before:-}" =~ ^[0-9]+$ ]] &&
+     [[ "\${cpu_idle_before:-}" =~ ^[0-9]+$ ]] &&
+     [[ "\${cpu_total_after:-}" =~ ^[0-9]+$ ]] &&
+     [[ "\${cpu_idle_after:-}" =~ ^[0-9]+$ ]]; then
+    cpu_usage=$(awk \
+      -v total_before="$cpu_total_before" \
+      -v idle_before="$cpu_idle_before" \
+      -v total_after="$cpu_total_after" \
+      -v idle_after="$cpu_idle_after" \
       'BEGIN {
+        total = total_after - total_before
+        idle = idle_after - idle_before
+        if (total <= 0) {
+          print "0"
+          exit
+        }
         value = 100 * (total - idle) / total
         if (value < 0) value = 0
         if (value > 100) value = 100
         printf "%.2f", value
       }')
+  else
+    echo "Warning: could not parse CPU counters from /proc/stat." >&2
   fi
 fi
 
@@ -173,21 +195,23 @@ curl -fsS \
   -H "Content-Type: application/json" \
   --data-binary "$payload" \
   "$PUSH_URL" >/dev/null
+
+if [ "\${1:-}" = "--verify" ]; then
+  printf '%s\\n' "$HEARTBEAT_SENTINEL"
+fi
 AGENT_EOF
 
 chmod 0700 "$SCRIPT_PATH"
 
 echo "Sending the first infrastructure heartbeat..."
-"$SCRIPT_PATH"
+if ! first_heartbeat_result=$("$SCRIPT_PATH" --verify); then
+  fail "the first heartbeat request was rejected"
+fi
+if [ "$first_heartbeat_result" != "PINGFLARE_HEARTBEAT_ACCEPTED" ]; then
+  fail "the agent did not confirm that the first heartbeat was accepted"
+fi
 
 if [ "$has_systemd" = true ]; then
-  if command -v crontab >/dev/null 2>&1; then
-    cron_tmp=$(mktemp)
-    crontab -l 2>/dev/null | grep -v -F "$SCRIPT_PATH" > "$cron_tmp" || true
-    crontab "$cron_tmp"
-    rm -f "$cron_tmp"
-  fi
-
   cat > "$SYSTEMD_SERVICE" <<EOF
 [Unit]
 Description=Pingflare Infrastructure Agent
