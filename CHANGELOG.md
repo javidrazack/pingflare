@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.5.0] - 2026-07-23
+
+### Added
+- **Infrastructure monitoring agent**: Collects CPU, RAM, disk, and Docker container health every minute
+- **Threshold alerting**: Agent monitors participate in the existing incident, tolerance, recovery, reminder, and notification flow
+- **Generated installer**: Token-scoped installation endpoint configures a systemd timer with a root-crontab fallback
+- **Agent heartbeat detection**: Missing or invalid reports mark the agent monitor unavailable
+- **JSONPath assertions** for HTTP response validation
+- **Scheduled maintenance windows** that suppress alert and status transitions
+- **Notification channels** for Microsoft Teams, Matrix, PagerDuty, and Twilio
+
+### Improved
+- Agent installer validates dependencies, permissions, scheduler activation, and the first successful heartbeat
+- Non-overlapping execution locks and reusable CPU counters reduce agent overhead and prevent out-of-order snapshots
+- Cloudflare Workers, Docker, migrations, request limits, secret handling, backup restore, and CI were hardened for production
+- Added agent, installer, security, cron, history, backup, DNS, ping, and public-status test coverage
+
+### Documentation
+- Added the infrastructure-agent installation and operational guide
+- Expanded API and deployment documentation for Cloudflare and Docker
+
 ## [1.4.1] - 2026-05-29
 
 ### Added

@@ -7,7 +7,7 @@
   import Icon from '$lib/components/Icon.svelte'
 
   const APP_VERSION = __APP_VERSION__
-  const GITHUB_REPO = 'butialabs/pingflare'
+  const GITHUB_REPO = 'javidrazack/pingflare'
 
   function isNewer(remote: string, local: string): boolean {
     const parse = (v: string) => {

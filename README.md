@@ -13,6 +13,12 @@ HTTP, DNS, ping, heartbeat, and lightweight infrastructure-agent monitoring. Run
 
 Sends alerts through Discord, Slack, Telegram, Email, ntfy, Pushover, generic webhooks, Apprise, Google Chat, Microsoft Teams, Matrix, PagerDuty, and Twilio.
 
+## Infrastructure monitoring agent
+
+Agent monitors collect CPU, RAM, disk, and Docker container health every minute. Pingflare generates a token-scoped installer that configures a systemd timer or root-crontab fallback, evaluates configurable thresholds, and uses the existing incident and notification flow when a server becomes unhealthy or stops reporting.
+
+See [AGENT.md](docs/AGENT.md) for installation, security, and operational details.
+
 ---
 
 ## Deploy
@@ -34,7 +40,7 @@ Two deployment modes are supported:
 
 > **Quick start:** Use the button below to deploy instantly from the current version of this repository. Note that this won't receive future updates automatically.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/butialabs/pingflare)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/javidrazack/pingflare)
 
 ### 1. Create the D1 database
 
@@ -78,7 +84,7 @@ Your dashboard will be live at `https://pingflare.<your-subdomain>.workers.dev`.
 ## 🐳 Deploy with Docker
 
 ```bash
-curl -O https://raw.githubusercontent.com/butialabs/pingflare/main/compose.yml
+curl -O https://raw.githubusercontent.com/javidrazack/pingflare/main/compose.yml
 
 # Edit the file and fill in ADMIN_USER, ADMIN_PASS, JWT_SECRET, ENCRYPTION_KEY
 
