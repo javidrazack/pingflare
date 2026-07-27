@@ -8,6 +8,25 @@ import type { Env } from '../index'
 const router = new Hono<{ Bindings: Env }>()
 router.use('*', requireAuth)
 
+const THEMES = new Set(['light', 'dark', 'system'])
+const HISTORY_DAYS = new Set([7, 30, 60, 90])
+
+function pageAppearance(body: Record<string, any>, existing?: typeof statusPages.$inferSelect) {
+  const brandColor = typeof body.brandColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(body.brandColor)
+    ? body.brandColor.toUpperCase()
+    : existing?.brandColor ?? '#B45309'
+  return {
+    logoUrl: body.logoUrl !== undefined ? (body.logoUrl || null) : existing?.logoUrl ?? null,
+    brandColor,
+    theme: THEMES.has(body.theme) ? body.theme : existing?.theme ?? 'system',
+    showResponseTime: body.showResponseTime !== undefined ? !!body.showResponseTime : existing?.showResponseTime ?? true,
+    showUptime: body.showUptime !== undefined ? !!body.showUptime : existing?.showUptime ?? true,
+    historyDays: HISTORY_DAYS.has(Number(body.historyDays)) ? Number(body.historyDays) : existing?.historyDays ?? 90,
+    seoTitle: body.seoTitle !== undefined ? (body.seoTitle || null) : existing?.seoTitle ?? null,
+    seoDescription: body.seoDescription !== undefined ? (body.seoDescription || null) : existing?.seoDescription ?? null,
+  } as const
+}
+
 function sanitizePage<T extends typeof statusPages.$inferSelect>(page: T): T {
   return { ...page, passwordHash: page.passwordHash ? 'configured' : null }
 }
@@ -33,6 +52,7 @@ router.post('/', async (c) => {
     description: body.description ?? null,
     passwordHash,
     showAllMonitors: body.showAllMonitors ?? false,
+    ...pageAppearance(body),
   })
 
   if (Array.isArray(body.monitorIds)) {
@@ -72,6 +92,7 @@ router.put('/:id', async (c) => {
     description: body.description !== undefined ? body.description : existing.description,
     passwordHash,
     showAllMonitors: body.showAllMonitors !== undefined ? body.showAllMonitors : existing.showAllMonitors,
+    ...pageAppearance(body, existing),
   }).where(eq(statusPages.id, id))
 
   if (Array.isArray(body.monitorIds)) {

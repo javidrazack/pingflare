@@ -18,12 +18,13 @@
   }
 </script>
 
-<div class="space-y-1">
+<div class="space-y-1" role="img"
+  aria-label="{days}-day uptime history. Green is operational, yellow is degraded, red is outage, and gray is no data.">
   <div class="flex gap-0.5">
     {#each data as day}
       <div
         class="flex-1 h-5 rounded-sm {colorFor(day.uptime)} cursor-default transition-opacity hover:opacity-80"
-        title={labelFor(day)}
+        aria-label={labelFor(day)}
       ></div>
     {/each}
   </div>

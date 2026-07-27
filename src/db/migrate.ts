@@ -101,6 +101,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS heartbeat_tokens_token_unique ON heartbeat_tok
 CREATE INDEX IF NOT EXISTS idx_sl_monitor_checked ON status_logs (monitor_id, checked_at);
 CREATE INDEX IF NOT EXISTS idx_sl_checked_at ON status_logs (checked_at);
 CREATE INDEX IF NOT EXISTS idx_monitors_active ON monitors (active);
+CREATE INDEX IF NOT EXISTS idx_monitors_status ON monitors (last_status);
+CREATE INDEX IF NOT EXISTS idx_monitors_type ON monitors (type);
+CREATE INDEX IF NOT EXISTS idx_monitors_updated ON monitors (updated_at);
 
 CREATE TABLE IF NOT EXISTS alert_state (
   monitor_id text PRIMARY KEY NOT NULL,
@@ -127,6 +130,14 @@ CREATE TABLE IF NOT EXISTS status_pages (
   description text,
   password_hash text,
   show_all_monitors integer DEFAULT false NOT NULL,
+  logo_url text,
+  brand_color text DEFAULT '#B45309' NOT NULL,
+  theme text DEFAULT 'system' NOT NULL,
+  show_response_time integer DEFAULT true NOT NULL,
+  show_uptime integer DEFAULT true NOT NULL,
+  history_days integer DEFAULT 90 NOT NULL,
+  seo_title text,
+  seo_description text,
   created_at integer DEFAULT (unixepoch()) NOT NULL
 );
 
@@ -145,6 +156,9 @@ CREATE TABLE IF NOT EXISTS incident_reports (
   id text PRIMARY KEY NOT NULL,
   title text NOT NULL,
   status text NOT NULL,
+  visibility text DEFAULT 'published' NOT NULL,
+  impact text DEFAULT 'minor' NOT NULL,
+  published_at integer,
   started_at integer DEFAULT (unixepoch()) NOT NULL,
   resolved_at integer
 );
@@ -165,6 +179,27 @@ CREATE TABLE IF NOT EXISTS incident_monitors (
   FOREIGN KEY (incident_id) REFERENCES incident_reports(id) ON UPDATE no action ON DELETE cascade,
   FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON UPDATE no action ON DELETE cascade
 );
+
+CREATE TABLE IF NOT EXISTS incident_report_events (
+  incident_id text NOT NULL,
+  event_id text NOT NULL,
+  PRIMARY KEY(incident_id, event_id),
+  FOREIGN KEY (incident_id) REFERENCES incident_reports(id) ON UPDATE no action ON DELETE cascade,
+  FOREIGN KEY (event_id) REFERENCES incidents(id) ON UPDATE no action ON DELETE cascade
+);
+
+CREATE TABLE IF NOT EXISTS notification_test_runs (
+  id text PRIMARY KEY NOT NULL,
+  channel_id text NOT NULL,
+  status text NOT NULL,
+  latency_ms integer NOT NULL,
+  error text,
+  created_at integer DEFAULT (unixepoch()) NOT NULL,
+  FOREIGN KEY (channel_id) REFERENCES notification_channels(id) ON UPDATE no action ON DELETE cascade
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_tests_channel_created
+  ON notification_test_runs (channel_id, created_at);
 
 CREATE TABLE IF NOT EXISTS maintenance_windows (
   id text PRIMARY KEY NOT NULL,
@@ -205,6 +240,17 @@ export async function ensureSchema(d1: D1Database): Promise<void> {
         `ALTER TABLE monitors ADD COLUMN ram_threshold integer`,
         `ALTER TABLE monitors ADD COLUMN disk_threshold integer`,
         `ALTER TABLE monitors ADD COLUMN last_metrics text`,
+        `ALTER TABLE status_pages ADD COLUMN logo_url text`,
+        `ALTER TABLE status_pages ADD COLUMN brand_color text DEFAULT '#B45309' NOT NULL`,
+        `ALTER TABLE status_pages ADD COLUMN theme text DEFAULT 'system' NOT NULL`,
+        `ALTER TABLE status_pages ADD COLUMN show_response_time integer DEFAULT true NOT NULL`,
+        `ALTER TABLE status_pages ADD COLUMN show_uptime integer DEFAULT true NOT NULL`,
+        `ALTER TABLE status_pages ADD COLUMN history_days integer DEFAULT 90 NOT NULL`,
+        `ALTER TABLE status_pages ADD COLUMN seo_title text`,
+        `ALTER TABLE status_pages ADD COLUMN seo_description text`,
+        `ALTER TABLE incident_reports ADD COLUMN visibility text DEFAULT 'published' NOT NULL`,
+        `ALTER TABLE incident_reports ADD COLUMN impact text DEFAULT 'minor' NOT NULL`,
+        `ALTER TABLE incident_reports ADD COLUMN published_at integer`,
       ]
       for (const sql of alterStatements) {
         try {

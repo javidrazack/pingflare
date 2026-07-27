@@ -55,7 +55,7 @@
       </span>
       {#each parseTags(monitor.tags) as tag}
         <span class="text-xs px-2 py-0.5 rounded font-medium"
-          style="background: rgb(255 102 51 / .08); color: var(--color-primary)">
+          style="background: color-mix(in srgb, var(--color-primary) 10%, transparent); color: var(--color-primary)">
           {tag}
         </span>
       {/each}
@@ -78,7 +78,7 @@
       <div class="font-medium tabular-nums" style="color: rgb(var(--text))">{monitor.interval}s</div>
       <div class="mt-0.5 text-[11px]">{$t('monitorCard.interval')}</div>
     </div>
-    <div class="text-right">
+    <div class="hidden text-right sm:block">
       <div class="font-medium" style="color: rgb(var(--text))">{formatRelative(monitor.lastCheckedAt, $locale)}</div>
       <div class="mt-0.5 text-[11px]">{$t('monitorCard.lastCheck')}</div>
     </div>

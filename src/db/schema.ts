@@ -45,6 +45,9 @@ export const monitors = sqliteTable('monitors', {
   updatedAt: integer('updated_at').notNull().default(sql`(unixepoch())`),
 }, (t) => [
   index('idx_monitors_active').on(t.active),
+  index('idx_monitors_status').on(t.lastStatus),
+  index('idx_monitors_type').on(t.type),
+  index('idx_monitors_updated').on(t.updatedAt),
 ])
 
 export const statusLogs = sqliteTable('status_logs', {
@@ -80,6 +83,17 @@ export const notificationChannels = sqliteTable('notification_channels', {
   createdAt: integer('created_at').notNull().default(sql`(unixepoch())`),
 })
 
+export const notificationTestRuns = sqliteTable('notification_test_runs', {
+  id: text('id').primaryKey(),
+  channelId: text('channel_id').notNull().references(() => notificationChannels.id, { onDelete: 'cascade' }),
+  status: text('status').notNull().$type<'success' | 'failed'>(),
+  latencyMs: integer('latency_ms').notNull(),
+  error: text('error'),
+  createdAt: integer('created_at').notNull().default(sql`(unixepoch())`),
+}, (t) => [
+  index('idx_notification_tests_channel_created').on(t.channelId, t.createdAt),
+])
+
 export const monitorNotifications = sqliteTable('monitor_notifications', {
   monitorId: text('monitor_id').notNull().references(() => monitors.id, { onDelete: 'cascade' }),
   channelId: text('channel_id').notNull().references(() => notificationChannels.id, { onDelete: 'cascade' }),
@@ -113,6 +127,14 @@ export const statusPages = sqliteTable('status_pages', {
   description: text('description'),
   passwordHash: text('password_hash'),
   showAllMonitors: integer('show_all_monitors', { mode: 'boolean' }).notNull().default(false),
+  logoUrl: text('logo_url'),
+  brandColor: text('brand_color').notNull().default('#B45309'),
+  theme: text('theme').notNull().default('system').$type<'light' | 'dark' | 'system'>(),
+  showResponseTime: integer('show_response_time', { mode: 'boolean' }).notNull().default(true),
+  showUptime: integer('show_uptime', { mode: 'boolean' }).notNull().default(true),
+  historyDays: integer('history_days').notNull().default(90),
+  seoTitle: text('seo_title'),
+  seoDescription: text('seo_description'),
   createdAt: integer('created_at').notNull().default(sql`(unixepoch())`),
 })
 
@@ -126,6 +148,9 @@ export const incidentReports = sqliteTable('incident_reports', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
   status: text('status').notNull().$type<'investigating' | 'identified' | 'monitoring' | 'resolved'>(),
+  visibility: text('visibility').notNull().default('published').$type<'draft' | 'published'>(),
+  impact: text('impact').notNull().default('minor').$type<'minor' | 'major' | 'critical'>(),
+  publishedAt: integer('published_at'),
   startedAt: integer('started_at').notNull().default(sql`(unixepoch())`),
   resolvedAt: integer('resolved_at'),
 })
@@ -143,11 +168,17 @@ export const incidentMonitors = sqliteTable('incident_monitors', {
   monitorId: text('monitor_id').notNull().references(() => monitors.id, { onDelete: 'cascade' }),
 }, (t) => [primaryKey({ columns: [t.incidentId, t.monitorId] })])
 
+export const incidentReportEvents = sqliteTable('incident_report_events', {
+  incidentId: text('incident_id').notNull().references(() => incidentReports.id, { onDelete: 'cascade' }),
+  eventId: text('event_id').notNull().references(() => incidents.id, { onDelete: 'cascade' }),
+}, (t) => [primaryKey({ columns: [t.incidentId, t.eventId] })])
+
 export type Monitor = typeof monitors.$inferSelect
 export type NewMonitor = typeof monitors.$inferInsert
 export type StatusLog = typeof statusLogs.$inferSelect
 export type Incident = typeof incidents.$inferSelect
 export type NotificationChannel = typeof notificationChannels.$inferSelect
+export type NotificationTestRun = typeof notificationTestRuns.$inferSelect
 export type AlertState = typeof alertState.$inferSelect
 export type StatusPage = typeof statusPages.$inferSelect
 export const maintenanceWindows = sqliteTable('maintenance_windows', {

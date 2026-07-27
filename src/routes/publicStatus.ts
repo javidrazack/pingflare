@@ -24,6 +24,22 @@ async function getDailyStats(
     .groupBy(statusLogs.monitorId, dayExpr)
 }
 
+function publicPageInfo(page: typeof statusPages.$inferSelect) {
+  return {
+    name: page.name,
+    description: page.description,
+    protected: !!page.passwordHash,
+    logoUrl: page.logoUrl,
+    brandColor: page.brandColor,
+    theme: page.theme,
+    showResponseTime: page.showResponseTime,
+    showUptime: page.showUptime,
+    historyDays: page.historyDays,
+    seoTitle: page.seoTitle,
+    seoDescription: page.seoDescription,
+  }
+}
+
 router.get('/:slug', async (c) => {
   const db = getDb(c.env.DB)
   const slug = c.req.param('slug')
@@ -36,7 +52,7 @@ router.get('/:slug', async (c) => {
 
   if (page.passwordHash) {
     const provided = c.req.header('x-status-password')
-    const pageInfo = { name: page.name, description: page.description }
+    const pageInfo = publicPageInfo(page)
     if (!provided) return c.json({ error: 'password_required', protected: true, page: pageInfo }, 401)
     if (!(await verifyPassword(provided, page.passwordHash))) return c.json({ error: 'wrong_password', protected: true, page: pageInfo }, 401)
   }
@@ -56,7 +72,7 @@ router.get('/:slug', async (c) => {
 
     if (monitorIds.length === 0) {
       return c.json({
-        page: { name: page.name, description: page.description, protected: !!page.passwordHash },
+        page: publicPageInfo(page),
         monitors: [],
         incidents: [],
       })
@@ -67,7 +83,7 @@ router.get('/:slug', async (c) => {
 
   if (monitorIds.length === 0) {
     return c.json({
-      page: { name: page.name, description: page.description, protected: !!page.passwordHash },
+      page: publicPageInfo(page),
       monitors: [],
       incidents: [],
     })
@@ -115,7 +131,10 @@ router.get('/:slug', async (c) => {
   if (incidentIds.length > 0) {
     const since14d = now - 14 * 86400
     const incRows = await db.select().from(incidentReports)
-      .where(inArray(incidentReports.id, incidentIds))
+      .where(and(
+        inArray(incidentReports.id, incidentIds),
+        eq(incidentReports.visibility, 'published'),
+      ))
       .orderBy(desc(incidentReports.startedAt))
       .limit(20)
 
@@ -139,7 +158,7 @@ router.get('/:slug', async (c) => {
   }
 
   return c.json({
-    page: { name: page.name, description: page.description, protected: !!page.passwordHash },
+    page: publicPageInfo(page),
     monitors: monitorData,
     incidents: incidentData,
   })

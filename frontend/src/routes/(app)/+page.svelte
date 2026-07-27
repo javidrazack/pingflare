@@ -52,6 +52,13 @@
   $: down    = $monitors.filter(m => m.lastStatus === 'down').length
   $: pending = $monitors.filter(m => m.lastStatus === 'pending').length
   $: allUp   = total > 0 && down === 0 && pending === 0
+  $: attention = $monitors
+    .filter(m => m.lastStatus !== 'up')
+    .sort((a, b) => (a.lastStatus === 'down' ? -1 : 1) - (b.lastStatus === 'down' ? -1 : 1))
+  $: watchlist = $monitors
+    .filter(m => m.lastStatus === 'up')
+    .sort((a, b) => (uptimes[a.id] ?? 101) - (uptimes[b.id] ?? 101))
+    .slice(0, 5)
 
   $: downLabel    = `${nMonitors($locale, down)} ${$t('dashboard.down').toLowerCase()}`
   $: pendingLabel = (() => {
@@ -67,7 +74,7 @@
   <div class="relative overflow-hidden" style="border-bottom: 1px solid var(--border-color)">
     <HeaderPattern />
 
-    <div class="relative px-4 py-6 md:px-8 md:py-8 max-w-5xl mx-auto">
+    <div class="relative px-4 py-6 md:px-8 md:py-8 max-w-7xl mx-auto">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           {#if allUp && total > 0}
@@ -108,7 +115,7 @@
     </div>
   </div>
 
-  <div class="px-4 py-5 md:px-8 md:py-8 max-w-5xl mx-auto space-y-5">
+  <div class="px-4 py-5 md:px-8 md:py-8 max-w-7xl mx-auto space-y-6">
 
     {#if error}
       <div class="flex items-center gap-2 px-4 py-3 rounded text-sm"
@@ -168,11 +175,11 @@
         <div class="flex items-center justify-between mb-3">
           <span class="text-xs font-medium" style="color: rgb(var(--text-muted))">{$t('dashboard.pending')}</span>
           <div class="w-9 h-9 rounded flex items-center justify-center"
-            style="background: rgb(255 102 51 / .1); color: var(--color-primary)">
+            style="background: rgb(var(--pending-bg)); color: var(--pending-fg)">
             <Icon name="clock" size={18} />
           </div>
         </div>
-        <div class="text-3xl font-bold tracking-tight tabular-nums" style="color: var(--color-primary)">{pending}</div>
+        <div class="text-3xl font-bold tracking-tight tabular-nums" style="color: var(--pending-fg)">{pending}</div>
         <div class="text-xs mt-1" style="color: rgb(var(--text-muted))">{$t('dashboard.awaitingCheck')}</div>
       </div>
       {/if}
@@ -185,7 +192,7 @@
       <div class="rounded text-center py-16 space-y-4"
         style="border: 1px solid var(--border-color); background-color: rgb(var(--card));">
         <div class="w-12 h-12 rounded flex items-center justify-center mx-auto"
-          style="background: rgb(255 102 51 / .08); color: var(--color-primary)">
+          style="background: color-mix(in srgb, var(--color-primary) 10%, transparent); color: var(--color-primary)">
           <Icon name="signal" size={22} />
         </div>
         <div>
@@ -202,16 +209,56 @@
     {:else}
       {#if pending > 0}
         <div class="flex items-center gap-2 px-4 py-3 rounded text-sm"
-          style="background: rgb(255 102 51 / .06); color: var(--color-primary); border: 1px solid rgb(255 102 51 / .25)">
+          style="background: rgb(var(--pending-bg)); color: var(--pending-fg); border: 1px solid var(--border-color)">
           <Icon name="clock" size={14} />
           <span class="flex-1">{@html pendingLabel}</span>
         </div>
       {/if}
 
-      <div class="space-y-2">
-        {#each $monitors as monitor (monitor.id)}
-          <MonitorCard {monitor} uptime={uptimes[monitor.id] ?? null} />
-        {/each}
+      <div class="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,.65fr)]">
+        <section class="space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="section-title">{$t('dashboard.priority')}</p>
+              <h2 class="mt-1 text-lg font-semibold" style="color: rgb(var(--text))">{$t('dashboard.needsAttention')}</h2>
+            </div>
+            <a href="/monitors?status=down" class="btn-ghost">{$t('dashboard.viewMonitors')}</a>
+          </div>
+          {#if attention.length > 0}
+            {#each attention as monitor (monitor.id)}
+              <MonitorCard {monitor} uptime={uptimes[monitor.id] ?? null} />
+            {/each}
+          {:else}
+            <div class="card flex items-center gap-3">
+              <div class="flex h-10 w-10 items-center justify-center rounded-full badge-up">
+                <Icon name="check-circle" size={20} />
+              </div>
+              <div>
+                <p class="font-semibold" style="color: rgb(var(--text))">{$t('dashboard.allOperational')}</p>
+                <p class="text-sm" style="color: rgb(var(--text-muted))">{$t('dashboard.noActiveIssues')}</p>
+              </div>
+            </div>
+          {/if}
+        </section>
+
+        <section class="space-y-3">
+          <div>
+            <p class="section-title">{$t('dashboard.performance')}</p>
+            <h2 class="mt-1 text-lg font-semibold" style="color: rgb(var(--text))">{$t('dashboard.uptimeWatchlist')}</h2>
+          </div>
+          <div class="card divide-y p-0">
+            {#each watchlist as monitor (monitor.id)}
+              <a href="/monitors/{monitor.id}" class="flex min-h-14 items-center justify-between gap-3 px-4 py-3 hover:bg-[rgb(var(--bg-subtle))]">
+                <span class="min-w-0 truncate text-sm font-medium" style="color: rgb(var(--text))">{monitor.name}</span>
+                <span class="shrink-0 font-mono text-sm" style="color: rgb(var(--text-muted))">
+                  {uptimes[monitor.id] === null || uptimes[monitor.id] === undefined ? '—' : `${uptimes[monitor.id]!.toFixed(2)}%`}
+                </span>
+              </a>
+            {:else}
+              <p class="p-4 text-sm" style="color: rgb(var(--text-muted))">{$t('dashboard.noPerformanceData')}</p>
+            {/each}
+          </div>
+        </section>
       </div>
     {/if}
 

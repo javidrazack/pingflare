@@ -41,7 +41,7 @@
   <HeaderPattern />
 
   <div class="absolute inset-0 pointer-events-none"
-    style="background: radial-gradient(ellipse 80% 50% at 50% -10%, rgb(255 102 51 / 0.08), transparent)"></div>
+    style="background: radial-gradient(ellipse 80% 50% at 50% -10%, color-mix(in srgb, var(--color-primary) 10%, transparent), transparent)"></div>
 
   <div class="relative w-full max-w-sm px-4">
 

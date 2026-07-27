@@ -45,9 +45,23 @@
     hoveredIdx = null
   }
 
+  function onKeydown(event: KeyboardEvent) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return
+    event.preventDefault()
+    if (event.key === 'Home') hoveredIdx = 0
+    else if (event.key === 'End') hoveredIdx = points.length - 1
+    else {
+      const current = hoveredIdx ?? points.length - 1
+      hoveredIdx = Math.max(0, Math.min(points.length - 1, current + (event.key === 'ArrowRight' ? 1 : -1)))
+    }
+  }
+
   $: hovered = hoveredIdx !== null ? points[hoveredIdx] : null
   $: dotLeft = hoveredIdx !== null ? xPct(hoveredIdx) : null
   $: dotTop  = hovered ? yPct(hovered.responseTimeMs!) : null
+  $: averageMs = points.length
+    ? Math.round(points.reduce((sum, point) => sum + (point.responseTimeMs ?? 0), 0) / points.length)
+    : 0
 </script>
 
 <div class="relative">
@@ -58,12 +72,19 @@
   {:else}
     <div
       bind:this={wrapEl}
-      role="img"
-      aria-label="Response time chart"
+      role="slider"
+      tabindex="0"
+      aria-valuemin="0"
+      aria-valuemax={points.length - 1}
+      aria-valuenow={hoveredIdx ?? points.length - 1}
+      aria-valuetext={hovered ? `${formatTs(hovered.checkedAt)}, ${hovered.responseTimeMs} milliseconds, ${hovered.status}` : `Latest check, ${points[points.length - 1]?.responseTimeMs} milliseconds`}
+      aria-label="Response time chart. {points.length} checks, average {averageMs} milliseconds, maximum {maxMs} milliseconds. Use left and right arrow keys to inspect points."
       class="relative cursor-crosshair"
       style="height:{height}px"
       on:mousemove={onMouseMove}
       on:mouseleave={onMouseLeave}
+      on:keydown={onKeydown}
+      on:focus={() => hoveredIdx = points.length - 1}
     >
       <svg
         viewBox="0 0 100 {height}"
@@ -72,13 +93,13 @@
       >
         <path
           d="{toPath(points)} L 100 {height} L 0 {height} Z"
-          fill="#ff6633"
+          fill="var(--color-primary)"
           fill-opacity="0.15"
         />
         <path
           d={toPath(points)}
           fill="none"
-          stroke="#ff6633"
+          stroke="var(--color-primary)"
           stroke-width="1.5"
           vector-effect="non-scaling-stroke"
         />
@@ -91,12 +112,12 @@
         ></div>
         <div
           class="absolute pointer-events-none"
-          style="left:{dotLeft}%; top:{dotTop}%; width:7px; height:7px; background:#ff6633; border-radius:50%; transform:translate(-50%,-50%)"
+          style="left:{dotLeft}%; top:{dotTop}%; width:7px; height:7px; background:var(--color-primary); border-radius:50%; transform:translate(-50%,-50%)"
         ></div>
       {/if}
     </div>
 
-    <div class="mt-2 text-xs min-h-[1.25rem]">
+    <div class="mt-2 text-xs min-h-[1.25rem]" aria-live="polite">
       {#if hovered}
         <div class="flex items-center gap-2" style="color: rgb(var(--text-muted))">
           <span class="font-mono font-bold w-10 shrink-0 tabular-nums

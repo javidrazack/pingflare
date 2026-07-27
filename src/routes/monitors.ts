@@ -1,5 +1,5 @@
 import { Hono, type Context } from 'hono'
-import { and, eq } from 'drizzle-orm'
+import { and, asc, count, desc, eq, like, or, type SQL } from 'drizzle-orm'
 import { getDb, monitors, heartbeatTokens, alertState, monitorNotifications, statusLogs, incidents, maintenanceWindows } from '../db'
 import { requireAuth } from '../middleware/auth'
 import { encryptField, isEncryptedValue } from '../utils'
@@ -102,8 +102,83 @@ function validateMonitor(body: Record<string, any>, existing?: typeof monitors.$
 
 router.get('/', async (c) => {
   const db = getDb(c.env.DB)
-  const rows = await db.select().from(monitors)
-  return c.json(rows.map(sanitizeMonitor))
+  const wantsPage = c.req.query('page') !== undefined
+  if (!wantsPage) {
+    const rows = await db.select().from(monitors)
+    return c.json(rows.map(sanitizeMonitor))
+  }
+
+  const boundedInt = (value: string | undefined, fallback: number, min: number, max: number) => {
+    const parsed = Number(value)
+    return Number.isInteger(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback
+  }
+  const page = boundedInt(c.req.query('page'), 1, 1, 100_000)
+  const pageSize = boundedInt(c.req.query('pageSize'), 25, 10, 100)
+  const status = c.req.query('status')
+  const type = c.req.query('type')
+  const active = c.req.query('active')
+  const search = c.req.query('search')?.trim().slice(0, 200)
+  const conditions: SQL[] = []
+  if (status && ['up', 'down', 'pending'].includes(status)) conditions.push(eq(monitors.lastStatus, status as 'up' | 'down' | 'pending'))
+  if (type && MONITOR_TYPES.has(type)) conditions.push(eq(monitors.type, type as (typeof monitors.$inferSelect)['type']))
+  if (active === 'true' || active === 'false') conditions.push(eq(monitors.active, active === 'true'))
+  if (search) {
+    const pattern = `%${search.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`
+    conditions.push(or(
+      like(monitors.name, pattern),
+      like(monitors.url, pattern),
+      like(monitors.tags, pattern),
+      like(monitors.dnsHostname, pattern),
+    )!)
+  }
+  const where = conditions.length > 0 ? and(...conditions) : undefined
+  const sortMap = {
+    name: monitors.name,
+    status: monitors.lastStatus,
+    type: monitors.type,
+    checked: monitors.lastCheckedAt,
+    updated: monitors.updatedAt,
+  } as const
+  const sortKey = c.req.query('sort') as keyof typeof sortMap
+  const sortColumn = sortMap[sortKey] ?? monitors.updatedAt
+  const order = c.req.query('direction') === 'asc' ? asc(sortColumn) : desc(sortColumn)
+  const offset = (page - 1) * pageSize
+
+  const [countRows, rows] = await Promise.all([
+    db.select({ total: count() }).from(monitors).where(where),
+    db.select().from(monitors).where(where).orderBy(order).limit(pageSize).offset(offset),
+  ])
+  const total = countRows[0]?.total ?? 0
+  return c.json({
+    items: rows.map(sanitizeMonitor),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  })
+})
+
+router.patch('/bulk', async (c) => {
+  const db = getDb(c.env.DB)
+  const body = await readMonitorBody(c)
+  if (body instanceof Response) return body
+  if (!Array.isArray(body.ids) || body.ids.length === 0 || body.ids.length > 100 ||
+      body.ids.some((id: unknown) => typeof id !== 'string')) {
+    return c.json({ error: 'Select between 1 and 100 monitors' }, 400)
+  }
+  if (body.action === 'delete') {
+    await c.env.DB.batch(body.ids.map((id: string) => c.env.DB.prepare('DELETE FROM monitors WHERE id = ?').bind(id)))
+    return c.json({ ok: true, affected: body.ids.length })
+  }
+  if (body.action !== 'pause' && body.action !== 'resume') {
+    return c.json({ error: 'Invalid bulk action' }, 400)
+  }
+  const active = body.action === 'resume'
+  const now = Math.floor(Date.now() / 1000)
+  await c.env.DB.batch(body.ids.map((id: string) =>
+    c.env.DB.prepare('UPDATE monitors SET active = ?, updated_at = ? WHERE id = ?').bind(active ? 1 : 0, now, id)
+  ))
+  return c.json({ ok: true, affected: body.ids.length })
 })
 
 router.get('/:id', async (c) => {

@@ -92,7 +92,7 @@
         style="border: 1px solid var(--border-color); background-color: rgb(var(--card));
 ">
         <div class="w-14 h-14 rounded flex items-center justify-center mx-auto"
-          style="background: rgb(255 102 51 / .08); color: var(--color-primary)">
+          style="background: color-mix(in srgb, var(--color-primary) 10%, transparent); color: var(--color-primary)">
           <Icon name="bell" size={24} />
         </div>
         <div>

@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono'
-import { eq } from 'drizzle-orm'
-import { getDb, notificationChannels, monitors, monitorNotifications } from '../db'
+import { eq, desc } from 'drizzle-orm'
+import { getDb, notificationChannels, notificationTestRuns, monitors, monitorNotifications } from '../db'
 import { requireAuth } from '../middleware/auth'
 import { sendNotification } from '../services/notifier'
 import { SENSITIVE_FIELDS, isEncryptedValue, encryptField } from '../utils'
@@ -86,6 +86,16 @@ router.get('/:id', async (c) => {
   })
   if (!ch) return c.json({ error: 'Not found' }, 404)
   return c.json(sanitizeChannel(ch))
+})
+
+router.get('/:id/tests', async (c) => {
+  const db = getDb(c.env.DB)
+  const rows = await db.select()
+    .from(notificationTestRuns)
+    .where(eq(notificationTestRuns.channelId, c.req.param('id')))
+    .orderBy(desc(notificationTestRuns.createdAt))
+    .limit(20)
+  return c.json(rows)
 })
 
 router.post('/', async (c) => {
@@ -196,11 +206,13 @@ router.post('/:id/apply-all-monitors', async (c) => {
 
 router.post('/:id/test', async (c) => {
   const db = getDb(c.env.DB)
+  const channelId = c.req.param('id')
   const ch = await db.query.notificationChannels.findFirst({
-    where: eq(notificationChannels.id, c.req.param('id')),
+    where: eq(notificationChannels.id, channelId),
   })
   if (!ch) return c.json({ error: 'Not found' }, 404)
 
+  const started = performance.now()
   try {
     await sendNotification(ch, {
       type: 'callback',
@@ -208,9 +220,29 @@ router.post('/:id/test', async (c) => {
       status: 'up',
       message: 'This is a test notification from Pingflare.',
     }, c.env.ENCRYPTION_KEY)
-    return c.json({ ok: true })
+    const latencyMs = Math.max(0, Math.round(performance.now() - started))
+    const run = {
+      id: crypto.randomUUID(),
+      channelId,
+      status: 'success' as const,
+      latencyMs,
+      error: null,
+      createdAt: Math.floor(Date.now() / 1000),
+    }
+    await db.insert(notificationTestRuns).values(run)
+    return c.json({ ok: true, run })
   } catch (err) {
-    return c.json({ error: String(err) }, 500)
+    const message = String(err).slice(0, 1000)
+    const run = {
+      id: crypto.randomUUID(),
+      channelId,
+      status: 'failed' as const,
+      latencyMs: Math.max(0, Math.round(performance.now() - started)),
+      error: message,
+      createdAt: Math.floor(Date.now() / 1000),
+    }
+    await db.insert(notificationTestRuns).values(run)
+    return c.json({ error: message, run }, 500)
   }
 })
 

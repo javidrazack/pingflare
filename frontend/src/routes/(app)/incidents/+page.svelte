@@ -3,11 +3,19 @@
   import { api } from '$lib/api'
   import { t } from '$lib/i18n'
   import { get } from 'svelte/store'
-  import type { IncidentReport, IncidentStatus, Monitor } from '$lib/api'
+  import type {
+    DetectedIncident,
+    IncidentImpact,
+    IncidentReport,
+    IncidentStatus,
+    IncidentVisibility,
+    Monitor,
+  } from '$lib/api'
   import Icon from '$lib/components/Icon.svelte'
   import HeaderPattern from '$lib/components/HeaderPattern.svelte'
 
   let incidents: IncidentReport[] = []
+  let detectedIncidents: DetectedIncident[] = []
   let allMonitors: Monitor[] = []
   let loading = true
   let error = ''
@@ -17,6 +25,9 @@
   let createStatus: IncidentStatus = 'investigating'
   let createMessage = ''
   let createMonitorIds: string[] = []
+  let createEventIds: string[] = []
+  let createVisibility: IncidentVisibility = 'published'
+  let createImpact: IncidentImpact = 'minor'
   let creating = false
   let createError = ''
 
@@ -25,10 +36,15 @@
   let updateStatus: IncidentStatus = 'investigating'
   let updating = false
   let updateError = ''
+  let activeView: 'detected' | 'reported' = 'detected'
 
   onMount(async () => {
     try {
-      ;[incidents, allMonitors] = await Promise.all([api.incidents.list(), api.monitors.list()])
+      ;[incidents, detectedIncidents, allMonitors] = await Promise.all([
+        api.incidents.list(),
+        api.incidents.detected(),
+        api.monitors.list(),
+      ])
     } catch (e) { error = String(e) }
     finally { loading = false }
   })
@@ -40,10 +56,14 @@
         title: createTitle, status: createStatus,
         message: createMessage || undefined,
         monitorIds: createMonitorIds,
+        eventIds: createEventIds,
+        visibility: createVisibility,
+        impact: createImpact,
       })
-      incidents = await api.incidents.list()
+      ;[incidents, detectedIncidents] = await Promise.all([api.incidents.list(), api.incidents.detected()])
       showCreate = false
-      createTitle = ''; createMessage = ''; createMonitorIds = []
+      createTitle = ''; createMessage = ''; createMonitorIds = []; createEventIds = []
+      activeView = 'reported'
     } catch (e) { createError = String(e) }
     finally { creating = false }
   }
@@ -89,6 +109,21 @@
     return new Date(ts * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
   }
 
+  function reportDetected(event: DetectedIncident) {
+    createTitle = `${event.monitorName} service disruption`
+    createStatus = event.resolvedAt ? 'resolved' : 'investigating'
+    createMessage = event.resolvedAt
+      ? 'Service has recovered. We are reviewing the event.'
+      : 'We are investigating an interruption affecting this service.'
+    createMonitorIds = [event.monitorId]
+    createEventIds = [event.id]
+    createVisibility = 'draft'
+    createImpact = 'minor'
+    showCreate = true
+    updatingIncident = null
+    activeView = 'detected'
+  }
+
   function statusCls(s: IncidentStatus): string {
     return {
       investigating: 'text-red-400 bg-red-500/10 border-red-500/20',
@@ -121,7 +156,7 @@
         </p>
       </div>
       <button class="btn-primary shrink-0"
-        on:click={() => { showCreate = true; updatingIncident = null }}>
+        on:click={() => { showCreate = true; updatingIncident = null; activeView = 'reported' }}>
         <Icon name="plus" size={14} />
         <span>{$t('incidents.newIncident')}</span>
       </button>
@@ -129,6 +164,21 @@
   </div>
 
   <div class="px-4 py-5 md:px-8 md:py-8 max-w-5xl mx-auto space-y-4">
+
+    <div class="inline-flex rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--bg-subtle))] p-1" role="tablist" aria-label="Incident views">
+      <button type="button" role="tab" aria-selected={activeView === 'detected'}
+        class="rounded-md px-4 py-2 text-sm font-medium {activeView === 'detected' ? 'bg-[rgb(var(--card))] shadow-sm' : ''}"
+        on:click={() => activeView = 'detected'}>
+        Detected events
+        {#if detectedIncidents.length}<span class="ml-1 badge badge-warning">{detectedIncidents.length}</span>{/if}
+      </button>
+      <button type="button" role="tab" aria-selected={activeView === 'reported'}
+        class="rounded-md px-4 py-2 text-sm font-medium {activeView === 'reported' ? 'bg-[rgb(var(--card))] shadow-sm' : ''}"
+        on:click={() => activeView = 'reported'}>
+        Status reports
+        {#if incidents.length}<span class="ml-1 badge">{incidents.length}</span>{/if}
+      </button>
+    </div>
 
     {#if error}
       <div class="flex items-center gap-2 px-4 py-3 rounded text-sm"
@@ -150,6 +200,22 @@
           <select id="inc-status" class="input" bind:value={createStatus}>
             {#each STATUSES as s}<option value={s}>{tIncidentStatus(s)}</option>{/each}
           </select>
+        </div>
+        <div class="col-span-2 sm:col-span-1">
+          <label class="label" for="inc-impact">Impact</label>
+          <select id="inc-impact" class="input" bind:value={createImpact}>
+            <option value="minor">Minor</option>
+            <option value="major">Major</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+        <div class="col-span-2">
+          <label class="label" for="inc-visibility">Publishing</label>
+          <select id="inc-visibility" class="input" bind:value={createVisibility}>
+            <option value="draft">Save as draft</option>
+            <option value="published">Publish to status pages</option>
+          </select>
+          <p class="mt-1 text-xs" style="color: rgb(var(--text-muted))">Drafts are visible only to your team until published.</p>
         </div>
         <div class="col-span-2">
           <label class="label" for="inc-msg">{$t('incidents.labelMessage')}</label>
@@ -214,14 +280,44 @@
     </div>
     {/if}
 
-    {#if loading}
+    {#if activeView === 'detected' && !loading}
+      {#if detectedIncidents.length === 0}
+        <div class="card py-14 text-center">
+          <div class="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[var(--color-success-soft)] text-[var(--color-success)]">
+            <Icon name="check" size={20} />
+          </div>
+          <p class="font-semibold">No unreported events</p>
+          <p class="mt-1 text-sm" style="color: rgb(var(--text-muted))">Every detected outage is already linked to a status report.</p>
+        </div>
+      {:else}
+        <div class="space-y-3">
+          {#each detectedIncidents as event (event.id)}
+            <article class="card flex flex-col gap-4 sm:flex-row sm:items-center">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <h2 class="font-semibold">{event.monitorName}</h2>
+                  <span class="badge {event.resolvedAt ? 'badge-success' : 'badge-danger'}">{event.resolvedAt ? 'Recovered' : 'Ongoing'}</span>
+                </div>
+                <p class="mt-1 text-sm" style="color: rgb(var(--text-muted))">
+                  Detected {formatDate(event.startedAt)}
+                  {#if event.durationSeconds} · {Math.max(1, Math.round(event.durationSeconds / 60))} min{/if}
+                </p>
+              </div>
+              <button class="btn-primary shrink-0" on:click={() => reportDetected(event)}>
+                Create report
+              </button>
+            </article>
+          {/each}
+        </div>
+      {/if}
+    {:else if loading}
       <div class="py-8 text-center text-sm" style="color: rgb(var(--text-muted))">{$t('incidents.loading')}</div>
-    {:else if incidents.length === 0 && !showAnyForm}
+    {:else if activeView === 'reported' && incidents.length === 0 && !showAnyForm}
       <div class="rounded text-center py-20 space-y-5"
         style="border: 1px solid var(--border-color); background-color: rgb(var(--card));
 ">
         <div class="w-14 h-14 rounded flex items-center justify-center mx-auto"
-          style="background: rgb(255 102 51 / .08); color: var(--color-primary)">
+          style="background: color-mix(in srgb, var(--color-primary) 10%, transparent); color: var(--color-primary)">
           <Icon name="exclamation-triangle" size={24} />
         </div>
         <div>
@@ -235,7 +331,7 @@
           {$t('incidents.createFirst')}
         </button>
       </div>
-    {:else}
+    {:else if activeView === 'reported'}
       <div class="space-y-3">
         {#each incidents as inc (inc.id)}
           <div class="rounded p-4 space-y-3"
@@ -246,6 +342,8 @@
                 <div class="flex items-center gap-2 flex-wrap">
                   <span class="font-semibold text-sm" style="color: rgb(var(--text))">{inc.title}</span>
                   <span class="text-xs px-2 py-0.5 rounded border font-medium {statusCls(inc.status)}">{tIncidentStatus(inc.status)}</span>
+                  <span class="badge">{inc.impact}</span>
+                  {#if inc.visibility === 'draft'}<span class="badge badge-warning">Draft</span>{/if}
                   {#if !inc.resolvedAt}
                     <span class="text-xs font-medium text-red-400">{$t('incidents.active')}</span>
                   {/if}

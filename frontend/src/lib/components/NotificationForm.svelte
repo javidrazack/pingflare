@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte'
+  import { createEventDispatcher, onMount } from 'svelte'
   import { api } from '$lib/api'
   import { channelTypeLabel } from '$lib/utils'
-  import type { NotificationChannel, NotificationChannelPayload } from '$lib/api'
+  import type { NotificationChannel, NotificationChannelPayload, NotificationTestRun } from '$lib/api'
   import { t } from '$lib/i18n'
 
   export let channel: Partial<NotificationChannel> = {}
@@ -25,6 +25,7 @@
   let saving = false
   let testing = false
   let testResult = ''
+  let testRuns: NotificationTestRun[] = []
 
   const encryptedFields: string[] = channel.encryptedFields ?? []
 
@@ -90,6 +91,13 @@
     return mode === 'edit' && encryptedFields.includes(key)
   }
 
+  async function loadTests() {
+    if (!channel.id) return
+    try { testRuns = await api.notifications.tests(channel.id) } catch { testRuns = [] }
+  }
+
+  onMount(loadTests)
+
   async function save() {
     saving = true
     error = ''
@@ -123,11 +131,12 @@
     testing = true
     testResult = ''
     try {
-      await api.notifications.test(channel.id)
-      testResult = $t('notificationForm.testSuccess')
+      const result = await api.notifications.test(channel.id)
+      testResult = `${$t('notificationForm.testSuccess')} (${result.run.latencyMs} ms)`
     } catch (e) {
       testResult = `Error: ${e}`
     } finally {
+      await loadTests()
       testing = false
     }
   }
@@ -192,7 +201,33 @@
   {/if}
 
   {#if testResult}
-    <p class="text-sm {testResult.startsWith('Error') ? 'text-red-400' : 'text-green-500'}">{testResult}</p>
+    <p class="alert {testResult.startsWith('Error') ? 'alert-danger' : 'alert-success'} text-sm" role="status">{testResult}</p>
+  {/if}
+
+  {#if mode === 'edit' && testRuns.length > 0}
+    <section aria-labelledby="test-history-title" class="rounded-xl border border-[rgb(var(--border))]">
+      <div class="flex items-center justify-between border-b border-[rgb(var(--border))] px-4 py-3">
+        <h3 id="test-history-title" class="text-sm font-semibold">Delivery test history</h3>
+        <span class="text-xs" style="color: rgb(var(--text-muted))">Latest {Math.min(testRuns.length, 5)}</span>
+      </div>
+      <ul class="divide-y divide-[rgb(var(--border))]">
+        {#each testRuns.slice(0, 5) as run}
+          <li class="flex items-start gap-3 px-4 py-3 text-sm">
+            <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full {run.status === 'success' ? 'bg-emerald-500' : 'bg-red-500'}"></span>
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-x-2">
+                <span class="font-medium">{run.status === 'success' ? 'Delivered' : 'Failed'}</span>
+                <span class="font-mono text-xs" style="color: rgb(var(--text-muted))">{run.latencyMs} ms</span>
+              </div>
+              {#if run.error}<p class="mt-0.5 truncate text-xs text-red-500" title={run.error}>{run.error}</p>{/if}
+            </div>
+            <time class="shrink-0 text-xs" datetime={new Date(run.createdAt * 1000).toISOString()} style="color: rgb(var(--text-muted))">
+              {new Date(run.createdAt * 1000).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+            </time>
+          </li>
+        {/each}
+      </ul>
+    </section>
   {/if}
 
   <div class="flex gap-2 pt-1">

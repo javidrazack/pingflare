@@ -39,6 +39,10 @@
   let copied = false
   let running = false
   let logsPage = 0
+  const tabs = ['overview', 'performance', 'incidents', 'logs', 'configuration'] as const
+  type DetailTab = typeof tabs[number]
+  $: requestedTab = $page.url.searchParams.get('tab')
+  $: activeTab = tabs.includes(requestedTab as DetailTab) ? requestedTab as DetailTab : 'overview'
   let metrics: { cpu: number; ram: number; disk: number; docker?: Array<{ name: string; status: string; health?: string }> } | null = null
 
   $: {
@@ -183,7 +187,7 @@
 
   <div class="relative overflow-hidden" style="border-bottom: 1px solid var(--border-color)">
     <HeaderPattern />
-    <div class="relative px-4 py-6 md:px-8 md:py-8 max-w-5xl mx-auto">
+    <div class="relative px-4 py-6 md:px-8 md:py-8 max-w-7xl mx-auto">
       <a href="/monitors" class="inline-flex items-center gap-1 text-xs mb-4 transition-colors hover:text-[var(--color-primary)]"
         style="color: rgb(var(--text-muted))">{$t('monitor.back')}</a>
       <div class="flex items-start justify-between gap-4">
@@ -236,7 +240,7 @@
               <div class="flex gap-1.5 mt-2 flex-wrap">
                 {#each tags as tag}
                   <span class="text-xs px-2 py-0.5 rounded font-medium"
-                    style="background: rgb(255 102 51 / .08); color: var(--color-primary)">{tag}</span>
+                    style="background: color-mix(in srgb, var(--color-primary) 10%, transparent); color: var(--color-primary)">{tag}</span>
                 {/each}
               </div>
             {/if}
@@ -258,7 +262,7 @@
     </div>
   </div>
 
-  <div class="px-4 py-5 md:px-8 md:py-8 max-w-5xl mx-auto space-y-4">
+  <div class="px-4 py-5 md:px-8 md:py-8 max-w-7xl mx-auto space-y-4">
 
     {#if error}
       <div class="flex items-center gap-2 px-4 py-3 rounded text-sm"
@@ -268,7 +272,18 @@
       </div>
     {/if}
 
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+    <nav class="flex gap-1 overflow-x-auto rounded-xl border p-1" aria-label={$t('monitor.detailSections')}
+      style="background: rgb(var(--bg-subtle))">
+      {#each tabs as tab}
+        <a href="?tab={tab}" aria-current={activeTab === tab ? 'page' : undefined}
+          class="min-h-11 shrink-0 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors {activeTab === tab ? 'bg-primary-solid' : ''}"
+          style={activeTab !== tab ? 'color: rgb(var(--text-muted))' : ''}>
+          {$t(`monitor.tab.${tab}`)}
+        </a>
+      {/each}
+    </nav>
+
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3" class:hidden={activeTab !== 'overview'}>
       <div class="stat-card">
         <div class="text-xs mb-2" style="color: rgb(var(--text-muted))">{$t('monitor.uptime30d')}</div>
         <div class="text-2xl font-bold tracking-tight tabular-nums text-green-500">{formatUptime(uptime30)}</div>
@@ -295,12 +310,12 @@
     </div>
 
 
-<div class="card">
+<div class="card" class:hidden={activeTab !== 'performance'}>
       <h2 class="text-sm font-semibold mb-4" style="color: rgb(var(--text))">{$t('monitor.uptime90d')}</h2>
       <UptimeChart data={daily} />
     </div>
 
-    <div class="card">
+    <div class="card" class:hidden={activeTab !== 'performance'}>
       <h2 class="text-sm font-semibold mb-4" style="color: rgb(var(--text))">{$t('monitor.overallUptime')}</h2>
       <div class="grid grid-cols-2 sm:grid-cols-4 divide-x" style="border: 1px solid var(--border-color); margin: -1px">
         {#each [
@@ -322,14 +337,14 @@
     </div>
 
     {#if monitor.type === 'http' || monitor.type === 'dns' || monitor.type === 'ping'}
-    <div class="card">
+    <div class="card" class:hidden={activeTab !== 'performance'}>
       <h2 class="text-sm font-semibold mb-4" style="color: rgb(var(--text))">{$t('monitor.responseTime')}</h2>
       <ResponseTimeChart {logs} height={80} />
     </div>
     {/if}
 
     {#if monitor.type === 'heartbeat' && hbToken}
-    <div class="card space-y-3">
+    <div class="card space-y-3" class:hidden={activeTab !== 'overview'}>
       <div>
         <h2 class="text-sm font-semibold" style="color: rgb(var(--text))">{$t('monitor.heartbeatUrl')}</h2>
         <p class="text-xs mt-0.5" style="color: rgb(var(--text-muted))">
@@ -356,7 +371,7 @@
     {/if}
 
     {#if monitor.type === 'agent' && metrics}
-    <div class="card">
+    <div class="card" class:hidden={activeTab !== 'overview'}>
       <h2 class="text-sm font-semibold mb-4" style="color: rgb(var(--text))">Infrastructure Metrics</h2>
       <div class="grid grid-cols-3 divide-x text-center mb-6" style="border: 1px solid var(--border-color); margin-top: -1px; margin-bottom: -1px; margin-left: -1px; margin-right: -1px">
         <div class="py-4">
@@ -392,7 +407,7 @@
     {/if}
 
     {#if monitor.type === 'agent' && hbToken}
-    <div class="card space-y-3 border-l-4" style="border-left-color: var(--color-primary)">
+    <div class="card space-y-3 border-l-4" class:hidden={activeTab !== 'configuration'} style="border-left-color: var(--color-primary)">
       <div>
         <h2 class="text-sm font-semibold" style="color: rgb(var(--text))">Agent Installation</h2>
         <p class="text-xs mt-0.5" style="color: rgb(var(--text-muted))">
@@ -418,7 +433,7 @@
     </div>
     {/if}
 
-    <div class="card">
+    <div class="card" class:hidden={activeTab !== 'incidents'}>
       <h2 class="text-sm font-semibold mb-4" style="color: rgb(var(--text))">{$t('monitor.incidents')}</h2>
       {#if incidents.length === 0}
         <div class="flex items-center gap-2 text-sm" style="color: rgb(var(--text-muted))">
@@ -447,7 +462,7 @@
       {/if}
     </div>
 
-    <div class="card">
+    <div class="card" class:hidden={activeTab !== 'logs'}>
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-sm font-semibold" style="color: rgb(var(--text))">{$t('monitor.recentChecks')}</h2>
         {#if recentLogs.length > 0}
@@ -519,7 +534,7 @@
       {/if}
     </div>
 
-    <div class="rounded-lg overflow-hidden" style="border: 1px solid rgb(239 68 68 / .35)">
+    <div class="rounded-lg overflow-hidden" class:hidden={activeTab !== 'configuration'} style="border: 1px solid rgb(239 68 68 / .35)">
       <div class="px-4 py-3" style="background: rgb(239 68 68 / .07); border-bottom: 1px solid rgb(239 68 68 / .25)">
         <h2 class="text-sm font-semibold text-red-400">{$t('monitor.dangerZone')}</h2>
       </div>

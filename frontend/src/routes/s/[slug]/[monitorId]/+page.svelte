@@ -193,7 +193,7 @@
               <div class="flex gap-1.5 mt-2 flex-wrap">
                 {#each tags as tag}
                   <span class="text-xs px-2 py-0.5 rounded font-medium"
-                    style="background: rgb(255 102 51 / .08); color: var(--color-primary)">{tag}</span>
+                    style="background: color-mix(in srgb, var(--color-primary) 10%, transparent); color: var(--color-primary)">{tag}</span>
                 {/each}
               </div>
             {/if}

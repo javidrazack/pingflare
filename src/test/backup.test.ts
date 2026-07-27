@@ -47,7 +47,7 @@ describe('GET /api/backup', () => {
     expect(res.status).toBe(401)
   })
 
-  it('exports all data with version 2', async () => {
+  it('exports all data with version 3', async () => {
     const { db, d1 } = ctx
     await insertMonitor(db, { name: 'My Monitor' })
 
@@ -56,7 +56,7 @@ describe('GET /api/backup', () => {
     expect(res.status).toBe(200)
 
     const data = await res.json() as Record<string, unknown>
-    expect(data.version).toBe(2)
+    expect(data.version).toBe(3)
     expect(Array.isArray(data.monitors)).toBe(true)
     expect((data.monitors as unknown[]).length).toBe(1)
   })

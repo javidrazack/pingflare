@@ -1,6 +1,14 @@
 import { Hono } from 'hono'
-import { eq, desc, inArray } from 'drizzle-orm'
-import { getDb, incidentReports, incidentUpdates, incidentMonitors } from '../db'
+import { eq, desc, inArray, isNull } from 'drizzle-orm'
+import {
+  getDb,
+  incidentReports,
+  incidentUpdates,
+  incidentMonitors,
+  incidentReportEvents,
+  incidents,
+  monitors,
+} from '../db'
 import { requireAuth } from '../middleware/auth'
 import type { Env } from '../index'
 
@@ -26,6 +34,25 @@ router.get('/', async (c) => {
   return c.json(enriched)
 })
 
+router.get('/detected', async (c) => {
+  const db = getDb(c.env.DB)
+  const rows = await db.select({
+    id: incidents.id,
+    monitorId: incidents.monitorId,
+    monitorName: monitors.name,
+    startedAt: incidents.startedAt,
+    resolvedAt: incidents.resolvedAt,
+    durationSeconds: incidents.durationSeconds,
+  })
+    .from(incidents)
+    .innerJoin(monitors, eq(incidents.monitorId, monitors.id))
+    .leftJoin(incidentReportEvents, eq(incidents.id, incidentReportEvents.eventId))
+    .where(isNull(incidentReportEvents.eventId))
+    .orderBy(desc(incidents.startedAt))
+    .limit(100)
+  return c.json(rows)
+})
+
 router.post('/', async (c) => {
   const db = getDb(c.env.DB)
   const body = await c.req.json()
@@ -36,6 +63,9 @@ router.post('/', async (c) => {
     id,
     title: body.title,
     status: body.status ?? 'investigating',
+    visibility: body.visibility === 'draft' ? 'draft' : 'published',
+    impact: ['minor', 'major', 'critical'].includes(body.impact) ? body.impact : 'minor',
+    publishedAt: body.visibility === 'draft' ? null : now,
     startedAt: now,
     resolvedAt: body.status === 'resolved' ? now : null,
   })
@@ -52,6 +82,15 @@ router.post('/', async (c) => {
   if (Array.isArray(body.monitorIds)) {
     for (const monitorId of body.monitorIds) {
       await db.insert(incidentMonitors).values({ incidentId: id, monitorId })
+    }
+  }
+
+  if (Array.isArray(body.eventIds)) {
+    const eventIds = [...new Set<string>(
+      (body.eventIds as unknown[]).filter((value): value is string => typeof value === 'string'),
+    )].slice(0, 100)
+    for (const eventId of eventIds) {
+      await db.insert(incidentReportEvents).values({ incidentId: id, eventId }).onConflictDoNothing()
     }
   }
 
@@ -84,6 +123,15 @@ router.put('/:id', async (c) => {
   await db.update(incidentReports).set({
     title: body.title ?? existing.title,
     status: nextStatus,
+    visibility: body.visibility === 'draft' || body.visibility === 'published'
+      ? body.visibility
+      : existing.visibility,
+    impact: ['minor', 'major', 'critical'].includes(body.impact)
+      ? body.impact
+      : existing.impact,
+    publishedAt: body.visibility === 'published'
+      ? (existing.publishedAt ?? now)
+      : body.visibility === 'draft' ? null : existing.publishedAt,
     resolvedAt,
   }).where(eq(incidentReports.id, id))
 
@@ -91,6 +139,16 @@ router.put('/:id', async (c) => {
     await db.delete(incidentMonitors).where(eq(incidentMonitors.incidentId, id))
     for (const monitorId of body.monitorIds) {
       await db.insert(incidentMonitors).values({ incidentId: id, monitorId })
+    }
+  }
+
+  if (Array.isArray(body.eventIds)) {
+    await db.delete(incidentReportEvents).where(eq(incidentReportEvents.incidentId, id))
+    const eventIds = [...new Set<string>(
+      (body.eventIds as unknown[]).filter((value): value is string => typeof value === 'string'),
+    )].slice(0, 100)
+    for (const eventId of eventIds) {
+      await db.insert(incidentReportEvents).values({ incidentId: id, eventId }).onConflictDoNothing()
     }
   }
 

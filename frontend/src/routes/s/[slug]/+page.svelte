@@ -35,6 +35,12 @@
     }
     if (!res.ok) { error = json.error ?? `Error ${res.status}`; loading = false; return }
     data = json as PublicStatusPage
+    const requestedTheme = data.page.theme
+    if (requestedTheme === 'light' || requestedTheme === 'dark') {
+      theme.setTheme(requestedTheme)
+    } else {
+      theme.setTheme(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    }
     isProtected = false
     wrongPassword = false
     loading = false
@@ -130,21 +136,21 @@
 </script>
 
 <svelte:head>
-  <title>{data?.page.name ?? 'Status'} - Status Page</title>
-  {#if data?.page.description}
-    <meta name="description" content={data.page.description} />
+  <title>{data?.page.seoTitle ?? (data?.page.name ? `${data.page.name} - Status` : 'Status Page')}</title>
+  {#if data?.page.seoDescription || data?.page.description}
+    <meta name="description" content={data.page.seoDescription ?? data.page.description ?? ''} />
   {/if}
   <link rel="icon" type="image/svg+xml" href={faviconHref} />
 </svelte:head>
 
-<div class="min-h-screen" style="background-color: rgb(var(--bg)); color: rgb(var(--text))">
+<div class="min-h-screen" style="--color-primary: {data?.page.brandColor ?? '#B45309'}; background-color: rgb(var(--bg)); color: rgb(var(--text))">
 
-  <header style="background-color: rgb(var(--bg-subtle)); border-bottom: 1px solid var(--border-color)">
+  <header style="background-color: rgb(var(--bg-subtle)); border-bottom: 2px solid {data?.page.brandColor ?? 'var(--border-color)'}">
     <div class="max-w-5xl mx-auto flex items-center h-14 px-4 gap-3">
-      <a href="/" aria-label="Pingflare" class="shrink-0 mr-1">
-        <img src="/logo.png" alt="Pingflare" class="h-6 object-contain" />
+      <a href="/" aria-label={data?.page.name ?? 'Pingflare'} class="shrink-0 mr-1">
+        <img src={data?.page.logoUrl ?? '/logo.png'} alt="" class="h-7 max-w-32 object-contain" />
       </a>
-      <span class="text-sm font-medium truncate flex-1" style="color: rgb(var(--text))">Pingflare</span>
+      <span class="text-sm font-medium truncate flex-1" style="color: rgb(var(--text))">{data?.page.name ?? 'Pingflare'}</span>
       <div class="flex items-center gap-1 shrink-0">
         {#if data}
           <span class="text-xs tabular-nums px-1.5" style="color: rgb(var(--text-muted))">{countdown}s</span>
@@ -300,17 +306,22 @@
                   <span class="w-2.5 h-2.5 rounded-full shrink-0 {statusDotCls(m.status)}
                     {m.status === 'down' ? 'animate-pulse' : ''}"></span>
                   <span class="font-medium text-sm flex-1" style="color: rgb(var(--text))">{m.name}</span>
-                  <span class="text-xs font-medium tabular-nums" style="color: {uptimeColor(m.uptime90d)}">
-                    {m.uptime90d !== null ? `${m.uptime90d.toFixed(2)}% ${$t('pub.uptime')}` : statusLabel(m.status)}
-                  </span>
+                  {#if data.page.showUptime}
+                    <span class="text-xs font-medium tabular-nums" style="color: {uptimeColor(m.uptime90d)}">
+                      {m.uptime90d !== null ? `${m.uptime90d.toFixed(2)}% ${$t('pub.uptime')}` : statusLabel(m.status)}
+                    </span>
+                  {:else}
+                    <span class="text-xs font-medium" style="color: {statusAccentColor(m.status)}">{statusLabel(m.status)}</span>
+                  {/if}
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
                     style="color: rgb(var(--text-muted)); flex-shrink:0">
                     <path d="M9 18l6-6-6-6"/>
                   </svg>
                 </div>
-                <div class="flex gap-0.5">
-                  {#each m.daily as day}
+                {#if data.page.showUptime}
+                <div class="flex gap-0.5" role="img" aria-label="{data.page.historyDays} day uptime history for {m.name}">
+                  {#each m.daily.slice(-data.page.historyDays) as day}
                     <div
                       class="flex-1 h-5 rounded-sm {barColor(day.uptime)}"
                       title="{day.date}: {day.uptime !== null ? day.uptime.toFixed(1) + '%' : $t('pub.noData')}"
@@ -318,9 +329,10 @@
                   {/each}
                 </div>
                 <div class="flex justify-between text-xs mt-1.5" style="color: rgb(var(--text-muted))">
-                  <span>{$t('pub.90daysAgo')}</span>
+                  <span>{data.page.historyDays} days ago</span>
                   <span>{$t('pub.today')}</span>
                 </div>
+                {/if}
               </a>
             {/each}
           </div>

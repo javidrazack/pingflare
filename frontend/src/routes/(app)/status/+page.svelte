@@ -6,6 +6,7 @@
   import type { StatusPage, Monitor } from '$lib/api'
   import Icon from '$lib/components/Icon.svelte'
   import HeaderPattern from '$lib/components/HeaderPattern.svelte'
+  import StatusPageAppearance from '$lib/components/StatusPageAppearance.svelte'
 
   let pages: StatusPage[] = []
   let allMonitors: Monitor[] = []
@@ -21,6 +22,14 @@
   let formMonitorIds: string[] = []
   let formShowAllMonitors = false
   let formEnablePassword = false
+  let formLogoUrl = ''
+  let formBrandColor = '#B45309'
+  let formTheme: 'light' | 'dark' | 'system' = 'system'
+  let formShowResponseTime = true
+  let formShowUptime = true
+  let formHistoryDays: 7 | 30 | 60 | 90 = 90
+  let formSeoTitle = ''
+  let formSeoDescription = ''
   let saving = false
   let formError = ''
 
@@ -35,6 +44,9 @@
     editPage = null
     formName = ''; formSlug = ''; formDescription = ''; formPassword = ''
     formMonitorIds = []; formShowAllMonitors = false; formEnablePassword = false; formError = ''
+    formLogoUrl = ''; formBrandColor = '#B45309'; formTheme = 'system'
+    formShowResponseTime = true; formShowUptime = true; formHistoryDays = 90
+    formSeoTitle = ''; formSeoDescription = ''
     showCreate = true
   }
 
@@ -47,6 +59,14 @@
     formError = ''
     formShowAllMonitors = page.showAllMonitors ?? false
     formEnablePassword = !!page.passwordHash
+    formLogoUrl = page.logoUrl ?? ''
+    formBrandColor = page.brandColor ?? '#B45309'
+    formTheme = page.theme ?? 'system'
+    formShowResponseTime = page.showResponseTime ?? true
+    formShowUptime = page.showUptime ?? true
+    formHistoryDays = page.historyDays ?? 90
+    formSeoTitle = page.seoTitle ?? ''
+    formSeoDescription = page.seoDescription ?? ''
     formMonitorIds = await api.statusPages.monitors(page.id)
     showCreate = false
   }
@@ -72,6 +92,14 @@
         password,
         showAllMonitors: formShowAllMonitors,
         monitorIds: formShowAllMonitors ? [] : formMonitorIds,
+        logoUrl: formLogoUrl || null,
+        brandColor: formBrandColor,
+        theme: formTheme,
+        showResponseTime: formShowResponseTime,
+        showUptime: formShowUptime,
+        historyDays: formHistoryDays,
+        seoTitle: formSeoTitle || null,
+        seoDescription: formSeoDescription || null,
       }
       if (editPage) {
         const updated = await api.statusPages.update(editPage.id, payload)
@@ -194,6 +222,19 @@
           {/if}
         {/if}
       </div>
+      <StatusPageAppearance
+        bind:name={formName}
+        bind:description={formDescription}
+        bind:logoUrl={formLogoUrl}
+        bind:brandColor={formBrandColor}
+        bind:theme={formTheme}
+        bind:showResponseTime={formShowResponseTime}
+        bind:showUptime={formShowUptime}
+        bind:historyDays={formHistoryDays}
+        bind:seoTitle={formSeoTitle}
+        bind:seoDescription={formSeoDescription}
+        monitors={formShowAllMonitors ? allMonitors : allMonitors.filter(m => formMonitorIds.includes(m.id))}
+      />
       {#if formError}<p class="text-sm text-red-400">{formError}</p>{/if}
       <div class="flex gap-2">
         <button class="btn-primary" on:click={save} disabled={saving}>
@@ -263,6 +304,19 @@
           {/if}
         {/if}
       </div>
+      <StatusPageAppearance
+        bind:name={formName}
+        bind:description={formDescription}
+        bind:logoUrl={formLogoUrl}
+        bind:brandColor={formBrandColor}
+        bind:theme={formTheme}
+        bind:showResponseTime={formShowResponseTime}
+        bind:showUptime={formShowUptime}
+        bind:historyDays={formHistoryDays}
+        bind:seoTitle={formSeoTitle}
+        bind:seoDescription={formSeoDescription}
+        monitors={formShowAllMonitors ? allMonitors : allMonitors.filter(m => formMonitorIds.includes(m.id))}
+      />
       {#if formError}<p class="text-sm text-red-400">{formError}</p>{/if}
       <div class="flex gap-2">
         <button class="btn-primary" on:click={save} disabled={saving}>
@@ -280,7 +334,7 @@
         style="border: 1px solid var(--border-color); background-color: rgb(var(--card));
 ">
         <div class="w-14 h-14 rounded flex items-center justify-center mx-auto"
-          style="background: rgb(255 102 51 / .08); color: var(--color-primary)">
+          style="background: color-mix(in srgb, var(--color-primary) 10%, transparent); color: var(--color-primary)">
           <Icon name="globe" size={24} />
         </div>
         <div>

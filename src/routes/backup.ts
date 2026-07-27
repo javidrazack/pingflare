@@ -84,7 +84,7 @@ router.get('/', async (c) => {
   for (const row of settingsRows) settingsMap[row.key] = row.value
 
   return c.json({
-    version: 2,
+    version: 3,
     exportedAt: Math.floor(Date.now() / 1000),
     settings: settingsMap,
     monitors: monitorsRows.map(m => ({
@@ -115,7 +115,7 @@ router.post('/restore', async (c) => {
     }
     return c.json({ error: 'Invalid JSON' }, 400)
   }
-  if (body.version !== 1 && body.version !== 2) {
+  if (body.version !== 1 && body.version !== 2 && body.version !== 3) {
     return c.json({ error: 'Unsupported backup version' }, 400)
   }
 
@@ -273,8 +273,12 @@ router.post('/restore', async (c) => {
     for (const page of pageRows) {
       const id = requiredString(page, 'id')
       statements.push(c.env.DB.prepare(`
-        INSERT INTO status_pages (id, name, slug, description, password_hash, show_all_monitors, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO status_pages (
+          id, name, slug, description, password_hash, show_all_monitors,
+          logo_url, brand_color, theme, show_response_time, show_uptime,
+          history_days, seo_title, seo_description, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         id,
         requiredString(page, 'name'),
@@ -282,6 +286,16 @@ router.post('/restore', async (c) => {
         optionalString(page.description),
         optionalString(page.passwordHash),
         page.showAllMonitors === true ? 1 : 0,
+        optionalString(page.logoUrl),
+        typeof page.brandColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(page.brandColor)
+          ? page.brandColor.toUpperCase()
+          : '#B45309',
+        page.theme === 'light' || page.theme === 'dark' ? page.theme : 'system',
+        page.showResponseTime === false ? 0 : 1,
+        page.showUptime === false ? 0 : 1,
+        [7, 30, 60, 90].includes(integerOr(page.historyDays, 90)) ? integerOr(page.historyDays, 90) : 90,
+        optionalString(page.seoTitle),
+        optionalString(page.seoDescription),
         integerOr(page.createdAt, now),
       ))
       const pageMonitorIds = Array.isArray(page.monitorIds) ? page.monitorIds : []

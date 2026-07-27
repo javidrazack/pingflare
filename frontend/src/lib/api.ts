@@ -53,6 +53,18 @@ export const api = {
 
   monitors: {
     list:   () => request<Monitor[]>('/monitors'),
+    search: (params: MonitorSearchParams) => {
+      const query = new URLSearchParams()
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== '' && value !== 'all') query.set(key, String(value))
+      })
+      return request<PaginatedMonitors>(`/monitors?${query.toString()}`)
+    },
+    bulk: (ids: string[], action: 'pause' | 'resume' | 'delete') =>
+      request<{ ok: boolean; affected: number }>('/monitors/bulk', {
+        method: 'PATCH',
+        body: JSON.stringify({ ids, action }),
+      }),
     get:    (id: string) => request<Monitor>(`/monitors/${id}`),
     create: (data: MonitorPayload) => request<Monitor>('/monitors', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: MonitorPayload) => request<Monitor>(`/monitors/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -91,7 +103,8 @@ export const api = {
     create: (data: NotificationChannelPayload) => request<NotificationChannel>('/notifications', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: NotificationChannelPayload) => request<NotificationChannel>(`/notifications/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => request<{ ok: boolean }>(`/notifications/${id}`, { method: 'DELETE' }),
-    test:              (id: string) => request<{ ok: boolean }>(`/notifications/${id}/test`, { method: 'POST' }),
+    test:              (id: string) => request<{ ok: boolean; run: NotificationTestRun }>(`/notifications/${id}/test`, { method: 'POST' }),
+    tests:             (id: string) => request<NotificationTestRun[]>(`/notifications/${id}/tests`),
     applyToAllMonitors:(id: string) => request<{ ok: boolean; applied: number }>(`/notifications/${id}/apply-all-monitors`, { method: 'POST' }),
   },
 
@@ -108,10 +121,11 @@ export const api = {
 
   incidents: {
     list:      () => request<IncidentReport[]>('/incidents'),
+    detected:  () => request<DetectedIncident[]>('/incidents/detected'),
     get:       (id: string) => request<IncidentReport>(`/incidents/${id}`),
-    create:    (data: { title: string; status: IncidentStatus; message?: string; monitorIds?: string[] }) =>
+    create:    (data: { title: string; status: IncidentStatus; message?: string; monitorIds?: string[]; eventIds?: string[]; visibility?: IncidentVisibility; impact?: IncidentImpact }) =>
                  request<IncidentReport>('/incidents', { method: 'POST', body: JSON.stringify(data) }),
-    update:    (id: string, data: { title?: string; status?: IncidentStatus; monitorIds?: string[] }) =>
+    update:    (id: string, data: { title?: string; status?: IncidentStatus; monitorIds?: string[]; eventIds?: string[]; visibility?: IncidentVisibility; impact?: IncidentImpact }) =>
                  request<IncidentReport>(`/incidents/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     addUpdate: (id: string, message: string, status: IncidentStatus) =>
                  request<IncidentUpdate>(`/incidents/${id}/updates`, { method: 'POST', body: JSON.stringify({ message, status }) }),
@@ -163,6 +177,25 @@ export interface Monitor {
   updatedAt: number
 }
 
+export interface MonitorSearchParams {
+  page: number
+  pageSize?: number
+  search?: string
+  status?: 'all' | 'up' | 'down' | 'pending'
+  type?: 'all' | Monitor['type']
+  active?: 'all' | 'true' | 'false'
+  sort?: 'name' | 'status' | 'type' | 'checked' | 'updated'
+  direction?: 'asc' | 'desc'
+}
+
+export interface PaginatedMonitors {
+  items: Monitor[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
 export interface StatusLog {
   id: string
   monitorId: string
@@ -194,6 +227,15 @@ export interface NotificationChannel {
   encryptedFields?: string[]
 }
 
+export interface NotificationTestRun {
+  id: string
+  channelId: string
+  status: 'success' | 'failed'
+  latencyMs: number
+  error: string | null
+  createdAt: number
+}
+
 export interface DailyUptime {
   date: string
   uptime: number | null
@@ -206,19 +248,41 @@ export interface StatusPage {
   description: string | null
   passwordHash: string | null
   showAllMonitors: boolean
+  logoUrl: string | null
+  brandColor: string
+  theme: 'light' | 'dark' | 'system'
+  showResponseTime: boolean
+  showUptime: boolean
+  historyDays: 7 | 30 | 60 | 90
+  seoTitle: string | null
+  seoDescription: string | null
   createdAt: number
 }
 
 export type IncidentStatus = 'investigating' | 'identified' | 'monitoring' | 'resolved'
+export type IncidentVisibility = 'draft' | 'published'
+export type IncidentImpact = 'minor' | 'major' | 'critical'
 
 export interface IncidentReport {
   id: string
   title: string
   status: IncidentStatus
+  visibility: IncidentVisibility
+  impact: IncidentImpact
+  publishedAt: number | null
   startedAt: number
   resolvedAt: number | null
   monitorIds?: string[]
   updates?: IncidentUpdate[]
+}
+
+export interface DetectedIncident {
+  id: string
+  monitorId: string
+  monitorName: string
+  startedAt: number
+  resolvedAt: number | null
+  durationSeconds: number | null
 }
 
 export interface IncidentUpdate {
@@ -248,7 +312,19 @@ export interface PublicIncident {
 }
 
 export interface PublicStatusPage {
-  page: { name: string; description: string | null; protected: boolean }
+  page: {
+    name: string
+    description: string | null
+    protected: boolean
+    logoUrl: string | null
+    brandColor: string
+    theme: 'light' | 'dark' | 'system'
+    showResponseTime: boolean
+    showUptime: boolean
+    historyDays: number
+    seoTitle: string | null
+    seoDescription: string | null
+  }
   monitors: PublicMonitorStatus[]
   incidents: PublicIncident[]
 }
