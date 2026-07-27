@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.6.0] - 2026-07-27
+
+### Added
+- **Redesigned monitoring experience**: New application shell, dashboard, monitor inventory, monitor details, incidents, notification, and status-page workflows
+- **Monitor management tools**: Search, filter, sorting, pagination, and bulk pause, resume, and delete actions
+- **Incident publishing**: Incident impact and visibility controls, monitor and detected-event linking, progress updates, and public incident history
+- **Status-page appearance**: Custom logo, brand color, light/dark/system theme, history range, response-time and uptime visibility, and SEO metadata
+- **Notification diagnostics**: Test-run history and clearer channel configuration feedback
+
+### Improved
+- Responsive layouts, accessibility, chart readability, status badges, forms, loading states, and English and Brazilian Portuguese copy
+- Public status pages now support branded presentation, selected or all monitors, incident updates, and a dedicated monitor view
+- Dependency constraints and HTTP-check behavior were hardened for reproducible Linux builds
+
+### Upgrade
+- Apply D1 migration `0004_wandering_mulholland_black.sql` before deploying the Worker
+- Docker/SQLite deployments apply the compatibility schema during startup
+
+## [1.5.0] - 2026-07-23
+
+### Added
+- **Infrastructure monitoring agent**: Collects CPU, RAM, disk, and Docker container health every minute
+- **Threshold alerting**: Agent monitors participate in the existing incident, tolerance, recovery, reminder, and notification flow
+- **Generated installer**: Token-scoped installation endpoint configures a systemd timer with a root-crontab fallback
+- **Agent heartbeat detection**: Missing or invalid reports mark the agent monitor unavailable
+- **JSONPath assertions** for HTTP response validation
+- **Scheduled maintenance windows** that suppress alert and status transitions
+- **Notification channels** for Microsoft Teams, Matrix, PagerDuty, and Twilio
+
+### Improved
+- Agent installer validates dependencies, permissions, scheduler activation, and the first successful heartbeat
+- Non-overlapping execution locks and reusable CPU counters reduce agent overhead and prevent out-of-order snapshots
+- Cloudflare Workers, Docker, migrations, request limits, secret handling, backup restore, and CI were hardened for production
+- Added agent, installer, security, cron, history, backup, DNS, ping, and public-status test coverage
+
+### Documentation
+- Added the infrastructure-agent installation and operational guide
+- Expanded API and deployment documentation for Cloudflare and Docker
+
 ## [1.4.1] - 2026-05-29
 
 ### Added

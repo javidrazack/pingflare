@@ -13,6 +13,15 @@ HTTP, DNS, ping, heartbeat, and lightweight infrastructure-agent monitoring. Run
 
 Sends alerts through Discord, Slack, Telegram, Email, ntfy, Pushover, generic webhooks, Apprise, Google Chat, Microsoft Teams, Matrix, PagerDuty, and Twilio.
 
+## Highlights
+
+- **Infrastructure monitoring agent** — install a lightweight systemd timer or cron job to monitor CPU, RAM, disk usage, and Docker container health.
+- **Five monitor types** — HTTP, DNS over HTTPS, ping/port, heartbeat, and infrastructure agent.
+- **Operational controls** — JSONPath response assertions, failure tolerances, scheduled maintenance, reminder alerts, and surge protection.
+- **Monitoring dashboard** — searchable and sortable monitor inventory, bulk actions, response-time and uptime charts, and incident management.
+- **Custom status pages** — choose monitors, branding, theme, history range, visibility, and published incident updates.
+- **Cloudflare or self-hosted** — deploy to Workers + D1 or run the same application with Docker and SQLite.
+
 ---
 
 ## Deploy
@@ -34,7 +43,7 @@ Two deployment modes are supported:
 
 > **Quick start:** Use the button below to deploy instantly from the current version of this repository. Note that this won't receive future updates automatically.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/butialabs/pingflare)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/javidrazack/pingflare)
 
 ### 1. Create the D1 database
 
@@ -78,7 +87,7 @@ Your dashboard will be live at `https://pingflare.<your-subdomain>.workers.dev`.
 ## 🐳 Deploy with Docker
 
 ```bash
-curl -O https://raw.githubusercontent.com/butialabs/pingflare/main/compose.yml
+curl -O https://raw.githubusercontent.com/javidrazack/pingflare/main/compose.yml
 
 # Edit the file and fill in ADMIN_USER, ADMIN_PASS, JWT_SECRET, ENCRYPTION_KEY
 

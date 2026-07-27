@@ -1,6 +1,6 @@
 services:
   pingflare:
-    image: ghcr.io/butialabs/pingflare:latest
+    image: ghcr.io/javidrazack/pingflare:latest
     ports:
       - "3000:3000"
     environment:
