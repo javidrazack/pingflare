@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { Monitor } from '../db/schema'
 import { msgTimeoutAfter } from '../notifications/messages'
-import jp from 'jsonpath'
+import { JSONPath } from 'jsonpath-plus'
 import { normalizeDoHUrl } from './doh-providers'
 import { decryptField, isEncryptedValue } from '../utils'
 
@@ -345,7 +345,12 @@ export async function checkHttp(monitor: Monitor, locale = 'en', encryptionKey?:
         try {
           const bodyText = await readTextWithLimit(response, MAX_JSON_RESPONSE_BYTES)
           const jsonData = JSON.parse(bodyText)
-          const matched = jp.query(jsonData, monitor.jsonPath)
+          const matched = JSONPath({
+            path: monitor.jsonPath,
+            json: jsonData,
+            wrap: true,
+            eval: false,
+          }) as unknown[]
 
           if (matched.length === 0) {
             return { status: 'down', statusCode: response.status, responseTimeMs, message: `JSON query '${monitor.jsonPath}' not found` }
