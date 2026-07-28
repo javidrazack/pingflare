@@ -217,13 +217,27 @@ describe('processAlert reliability', () => {
       status: 'down',
       message: 'Still down',
     })
-    await drainNotificationDeliveries(ctx.db, undefined, now)
+    const [delivery] = await ctx.db.select().from(notificationDeliveries)
+    expect(delivery).toBeDefined()
+    expect(
+      await drainNotificationDeliveries(
+        ctx.db,
+        undefined,
+        delivery.nextAttemptAt,
+      ),
+    ).toMatchObject({ attempted: 1, delivered: 0, deferred: 1 })
 
     let [state] = await ctx.db.select().from(alertState)
       .where(eq(alertState.monitorId, id))
     expect(state.lastReminderAt).toBe(previousReminder)
 
-    await drainNotificationDeliveries(ctx.db, undefined, now + 31)
+    expect(
+      await drainNotificationDeliveries(
+        ctx.db,
+        undefined,
+        delivery.nextAttemptAt + 31,
+      ),
+    ).toMatchObject({ attempted: 1, delivered: 1, deferred: 0 })
     ;[state] = await ctx.db.select().from(alertState)
       .where(eq(alertState.monitorId, id))
     expect(state.lastReminderAt).toBeGreaterThan(previousReminder)
