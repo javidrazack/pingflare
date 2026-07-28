@@ -16,6 +16,62 @@ Pingflare separates authoritative operational state from high-volume telemetry a
 
 D1/SQLite is the source of truth. Analytics Engine writes are best-effort and never gate a check. Cache misses and failures fall back to D1.
 
+## Current data flow
+
+```mermaid
+flowchart LR
+    subgraph Sources["Observation and request sources"]
+        Cron["Cron trigger<br/>every minute"]
+        Push["Heartbeat push"]
+        Agent["Infrastructure agent<br/>every minute"]
+        Admin["Authenticated dashboard / API"]
+        Public["Public status page"]
+    end
+
+    subgraph Worker["Pingflare Worker"]
+        Lease["D1 lease + indexed scheduler"]
+        Checks["HTTP / DNS / port /<br/>missed-push checks"]
+        Persist["Revision-guarded<br/>observation persistence"]
+        Alert["Alert state +<br/>incident transition"]
+        Outbox["Bounded notification<br/>outbox drain"]
+        Guard["Rate limit, authorize,<br/>reserve read budget"]
+        Read["Analytics and<br/>status read service"]
+    end
+
+    subgraph Data["Data and acceleration"]
+        D1[("D1 / SQLite<br/>source of truth")]
+        AE[("Analytics Engine<br/>best-effort telemetry")]
+        Cache[("Cache API<br/>completed days only")]
+    end
+
+    Providers["Notification providers"]
+    Response["Dashboard / public response<br/>live data is no-store"]
+
+    Cron --> Lease
+    D1 -->|"lease and due cursor"| Lease
+    Lease --> Checks
+    Checks --> Persist
+    Push --> Persist
+    Agent --> Persist
+    Persist -->|"current state, counters, evidence"| D1
+    Persist -.->|"one privacy-bounded point"| AE
+    Persist --> Alert
+    Alert -->|"incident truth + delivery event"| D1
+    D1 -->|"due delivery rows"| Outbox
+    Outbox --> Providers
+
+    Admin --> Read
+    Public --> Guard
+    Guard --> Read
+    Read -->|"current state, today, yesterday,<br/>or cache-miss rollups"| D1
+    Read -->|"completed-day lookup and fill"| Cache
+    D1 -->|"authoritative live and aggregate data"| Read
+    Cache -->|"immutable fragment hit"| Read
+    Read --> Response
+```
+
+The telemetry and cache paths are deliberately non-authoritative. A failed Analytics Engine write is discarded, while a Cache API miss or error is served from D1/SQLite. No current state, recent logs, or active incidents are stored in Cache API.
+
 ## Check write path
 
 1. A holder-owned 120-second D1 lease prevents scheduled and manual runs from overlapping. Long runs renew the lease before every external-check batch and again before persistence.
@@ -53,6 +109,21 @@ Cache keys include monitor IDs, per-monitor history revisions, and the requested
 | Notification provider failure | Operational state still commits; the durable delivery row retries with capped backoff |
 | Worker stops after a check | The renewable lease expires after 120 seconds; durable cursors prevent immediate duplicate scheduling once persistence completes |
 | D1 migration failure | `npm run deploy` stops before deploying the new Worker |
+
+## Capacity model
+
+The scheduler's steady-state admission rate is the binding limit for scheduled HTTP, DNS, TCP-port, and missed-push checks:
+
+```text
+normal theoretical load:       sum(60 / monitor_interval_seconds) <= 2
+conservative guaranteed load:  sum(60 / monitor_interval_seconds) <= 1
+```
+
+The normal bound applies after legacy catch-up and allows two healthy steady-state observations per minute. The conservative bound avoids backlog during a catch-up batch and preserves a slot under the worst transition query estimate. Due times should be distributed; admission rate does not guarantee that a large synchronized group completes in one cron invocation.
+
+Healthy heartbeat and infrastructure-agent pushes use separate Worker requests and bypass external-check admission. A practical Cloudflare Free-plan starting point is up to ten healthy one-minute push sources, with D1 row writes and Worker requests monitored as real traffic is added. This is not a hard application maximum. When push sources stop, their missed-push checks return to the shared scheduler. A strict one-minute simultaneous-outage requirement must therefore count scheduled and push monitors together under the two-check/minute normal bound, or the one-check/minute conservative bound.
+
+The supplied infrastructure agent reports once per minute. Ten-second reporting is unsupported: Cloudflare Cron cannot schedule below one minute, and a ten-second push source would consume 8,640 Worker requests and Analytics Engine points per day before D1 writes and UI/API traffic.
 
 ## Query and write controls
 
