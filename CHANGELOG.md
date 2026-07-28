@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-07-28
+
 ### Added
 - Analytics Engine telemetry datasets for high-resolution check, agent, and sampled API metrics
 - Exact compact D1 daily rollups with authoritative current-day counters
