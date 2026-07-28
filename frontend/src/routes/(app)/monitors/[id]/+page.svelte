@@ -34,11 +34,19 @@
   let hbToken: string | null = null
   let checkCount = 0
   let loading = true
+  let currentError = ''
+  let analyticsError = ''
+  let actionError = ''
   let error = ''
-  let ticker: ReturnType<typeof setInterval>
+  let currentTicker: ReturnType<typeof setTimeout>
+  let analyticsTicker: ReturnType<typeof setTimeout>
+  let currentInFlight = false
+  let analyticsInFlight = false
+  let destroyed = false
   let copied = false
   let running = false
   let logsPage = 0
+  let avgResponseTime: number | null = null
   const tabs = ['overview', 'performance', 'incidents', 'logs', 'configuration'] as const
   type DetailTab = typeof tabs[number]
   $: requestedTab = $page.url.searchParams.get('tab')
@@ -55,44 +63,91 @@
     }
   }
 
-  async function load() {
+  async function loadCurrent() {
+    if (currentInFlight || (typeof document !== 'undefined' && document.hidden)) return
+    currentInFlight = true
     try {
       monitor = await api.monitors.get(id)
-      ;[logs, recentLogs, incidents, daily] = await Promise.all([
-        api.monitors.logs(id, 24),
+      ;[recentLogs, incidents] = await Promise.all([
         api.monitors.recentLogs(id, 200),
         api.monitors.incidents(id),
-        api.monitors.daily(id, 90),
       ])
-      const [u1, u7, u30, u90, countData] = await Promise.all([
-        api.monitors.uptime(id, 1),
-        api.monitors.uptime(id, 7),
-        api.monitors.uptime(id, 30),
-        api.monitors.uptime(id, 90),
-        api.monitors.checkCount(id),
-      ])
-      uptime1 = u1.uptime
-      uptime7 = u7.uptime
-      uptime30 = u30.uptime
-      uptime90 = u90.uptime
-      checkCount = countData.count
-      if (monitor?.type === 'heartbeat' || monitor?.type === 'agent') {
+      const since24h = Math.floor(Date.now() / 1000) - 86400
+      logs = recentLogs.filter((log) => log.checkedAt >= since24h)
+      if ((monitor?.type === 'heartbeat' || monitor?.type === 'agent') && !hbToken) {
         const tok = await api.monitors.hbToken(id)
         hbToken = tok.token
       }
-      error = ''
+      currentError = ''
     } catch (e) {
-      error = String(e)
+      currentError = String(e)
     } finally {
-      loading = false
+      currentInFlight = false
+    }
+  }
+
+  async function loadAnalytics() {
+    if (analyticsInFlight || (typeof document !== 'undefined' && document.hidden)) return
+    analyticsInFlight = true
+    try {
+      const analytics = await api.monitors.analytics(id, 90)
+      daily = analytics.daily
+      uptime1 = analytics.uptimes['1']
+      uptime7 = analytics.uptimes['7']
+      uptime30 = analytics.uptimes['30']
+      uptime90 = analytics.uptimes['90']
+      checkCount = analytics.count
+      avgResponseTime = analytics.avgResponseMs
+      analyticsError = ''
+    } catch (e) {
+      analyticsError = String(e)
+    } finally {
+      analyticsInFlight = false
+    }
+  }
+
+  async function load() {
+    await Promise.all([loadCurrent(), loadAnalytics()])
+    loading = false
+  }
+
+  function scheduleCurrent() {
+    clearTimeout(currentTicker)
+    if (!destroyed) currentTicker = setTimeout(async () => {
+      await loadCurrent()
+      scheduleCurrent()
+    }, 30_000)
+  }
+
+  function scheduleAnalytics() {
+    clearTimeout(analyticsTicker)
+    if (!destroyed) analyticsTicker = setTimeout(async () => {
+      await loadAnalytics()
+      scheduleAnalytics()
+    }, 5 * 60_000)
+  }
+
+  function handleVisibility() {
+    if (!document.hidden) {
+      void loadCurrent()
+      void loadAnalytics()
+      scheduleCurrent()
+      scheduleAnalytics()
     }
   }
 
   async function runChecks() {
     running = true
+    actionError = ''
     try {
-      await api.cron.run()
-      await load()
+      const result = await api.cron.run()
+      if (result.skippedBecauseLeased) {
+        actionError = $t('dashboard.checksAlreadyRunning')
+        return
+      }
+      await Promise.all([loadCurrent(), loadAnalytics()])
+    } catch (e) {
+      actionError = String(e)
     } finally {
       running = false
     }
@@ -102,9 +157,9 @@
     if (!confirm(get(t)('monitor.resetConfirm'))) return
     try {
       await api.monitors.resetStats(id)
-      await load()
+      await Promise.all([loadCurrent(), loadAnalytics()])
     } catch (e) {
-      error = String(e)
+      actionError = String(e)
     }
   }
 
@@ -115,7 +170,7 @@
       await api.monitors.delete(id)
       goto('/monitors')
     } catch (e) {
-      error = String(e)
+      actionError = String(e)
     }
   }
 
@@ -127,7 +182,7 @@
     try {
       monitor = await api.monitors.toggleActive(id, next)
     } catch (e) {
-      error = String(e)
+      actionError = String(e)
     }
   }
 
@@ -152,14 +207,22 @@
     setTimeout(() => copiedInstall = false, 2000)
   }
 
-  onMount(() => { load(); ticker = setInterval(load, 10_000) })
-  onDestroy(() => clearInterval(ticker))
-
-  $: avgResponseTime = logs.length && logs.filter(l => l.responseTimeMs).length
-    ? Math.round(logs.filter(l => l.responseTimeMs).reduce((s, l) => s + (l.responseTimeMs ?? 0), 0) / logs.filter(l => l.responseTimeMs).length)
-    : null
+  onMount(() => {
+    void load().finally(() => {
+      scheduleCurrent()
+      scheduleAnalytics()
+    })
+    document.addEventListener('visibilitychange', handleVisibility)
+  })
+  onDestroy(() => {
+    destroyed = true
+    clearTimeout(currentTicker)
+    clearTimeout(analyticsTicker)
+    document.removeEventListener('visibilitychange', handleVisibility)
+  })
 
   $: openIncidents = incidents.filter(i => !i.resolvedAt).length
+  $: error = actionError || currentError || analyticsError
   $: tags = monitor ? parseTags(monitor.tags) : []
 
   $: headerCount = (() => { try { return Object.keys(JSON.parse(monitor?.headers ?? '{}')).length } catch { return 0 } })()
@@ -289,7 +352,7 @@
         <div class="text-2xl font-bold tracking-tight tabular-nums text-green-500">{formatUptime(uptime30)}</div>
       </div>
       <div class="stat-card">
-        <div class="text-xs mb-2" style="color: rgb(var(--text-muted))">{$t('monitor.avgResponse')}</div>
+        <div class="text-xs mb-2" style="color: rgb(var(--text-muted))">{$t('monitor.avgResponse90d')}</div>
         <div class="text-2xl font-bold tracking-tight tabular-nums" style="color: rgb(var(--text))">
           {avgResponseTime != null ? `${avgResponseTime}ms` : '-'}
         </div>
@@ -304,7 +367,7 @@
         <div class="text-base font-semibold" style="color: rgb(var(--text))">{formatRelative(monitor.lastCheckedAt, $locale)}</div>
       </div>
       <div class="stat-card">
-        <div class="text-xs mb-2" style="color: rgb(var(--text-muted))">{$t('monitor.totalChecks')}</div>
+        <div class="text-xs mb-2" style="color: rgb(var(--text-muted))">{$t('monitor.checks90d')}</div>
         <div class="text-2xl font-bold tracking-tight tabular-nums" style="color: rgb(var(--text))">{checkCount.toLocaleString()}</div>
       </div>
     </div>

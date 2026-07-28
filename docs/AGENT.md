@@ -11,6 +11,14 @@ The agent runs every minute and collects:
 
 It pushes these metrics to your Pingflare instance via `POST /api/agent/push/:token`.
 
+## Reporting cadence and Free-plan sizing
+
+The installed systemd timer or cron entry runs once per minute. The one-second CPU sample mentioned above is only a first-run/reboot fallback used to seed `/proc/stat` counters; it is not a ten-second or one-second reporting mode.
+
+Ten-second reporting is not supported by the current agent. Cloudflare Cron has a one-minute minimum, and a ten-second push source would consume 8,640 Worker requests and Analytics Engine points per day before its D1 writes or any dashboard/API traffic.
+
+For a Cloudflare Free-plan installation, start with up to ten healthy one-minute heartbeat and infrastructure-agent push sources combined, then monitor D1 row writes and Worker requests. Healthy pushes bypass scheduled external-check admission, but missed-push detection does not: if multiple sources stop together, their failure checks share the scheduler's two-check/minute normal budget. If every source must alert within one minute during a simultaneous outage, count all scheduled and push monitors under that shared budget. See [Architecture](ARCHITECTURE.md#capacity-model) for the full model.
+
 ## Setup
 
 1. Open your Pingflare dashboard.

@@ -28,8 +28,28 @@ const DNS_RCODES: Record<number, string> = {
 
 const MAX_JSON_RESPONSE_BYTES = 512 * 1024
 const MAX_DNS_RESPONSE_BYTES = 64 * 1024
+const DEFAULT_CHECK_TIMEOUT_SECONDS = 30
+export const MAX_CHECK_DEADLINE_MS = 60 * 1000
 
-async function readArrayBufferWithLimit(response: Response, maxBytes: number): Promise<ArrayBuffer> {
+function checkTimeoutSeconds(monitor: Monitor): number {
+  const configured = Number.isFinite(monitor.timeout)
+    ? Math.trunc(monitor.timeout)
+    : DEFAULT_CHECK_TIMEOUT_SECONDS
+  return Math.min(
+    MAX_CHECK_DEADLINE_MS / 1000,
+    Math.max(1, configured),
+  )
+}
+
+function isAbortError(error: unknown, signal: AbortSignal): boolean {
+  return signal.aborted || (error instanceof Error && error.name === 'AbortError')
+}
+
+async function readArrayBufferWithLimit(
+  response: Response,
+  maxBytes: number,
+  signal?: AbortSignal,
+): Promise<ArrayBuffer> {
   const declaredLength = Number(response.headers.get('content-length'))
   if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
     throw new Error(`Response body exceeds ${maxBytes} bytes`)
@@ -41,6 +61,7 @@ async function readArrayBufferWithLimit(response: Response, maxBytes: number): P
   let total = 0
   try {
     while (true) {
+      signal?.throwIfAborted()
       const { done, value } = await reader.read()
       if (done) break
       total += value.byteLength
@@ -63,8 +84,12 @@ async function readArrayBufferWithLimit(response: Response, maxBytes: number): P
   return combined.buffer
 }
 
-async function readTextWithLimit(response: Response, maxBytes: number): Promise<string> {
-  return new TextDecoder().decode(await readArrayBufferWithLimit(response, maxBytes))
+async function readTextWithLimit(
+  response: Response,
+  maxBytes: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  return new TextDecoder().decode(await readArrayBufferWithLimit(response, maxBytes, signal))
 }
 
 
@@ -80,17 +105,40 @@ function parseDnsWire(buf: ArrayBuffer): WireResult {
 
   const readName = (start: number): [string, number] => {
     const labels: string[] = []
+    const visited = new Set<number>()
     let pos = start
     let end = -1
-    while (pos < v.byteLength) {
+    let hops = 0
+    let decodedBytes = 0
+    while (true) {
+      if (pos < 0 || pos >= v.byteLength) {
+        throw new Error('DNS name exceeds response bounds')
+      }
+      if (visited.has(pos) || hops >= 128) {
+        throw new Error('DNS name contains a compression-pointer cycle')
+      }
+      visited.add(pos)
+      hops += 1
       const len = v.getUint8(pos)
       if (len === 0) { if (end < 0) end = pos + 1; break }
       if ((len & 0xc0) === 0xc0) {
+        if (pos + 1 >= v.byteLength) {
+          throw new Error('DNS compression pointer is truncated')
+        }
         if (end < 0) end = pos + 2
-        pos = ((len & 0x3f) << 8) | v.getUint8(pos + 1)
+        const target = ((len & 0x3f) << 8) | v.getUint8(pos + 1)
+        if (target >= v.byteLength) {
+          throw new Error('DNS compression pointer exceeds response bounds')
+        }
+        pos = target
         continue
       }
+      if ((len & 0xc0) !== 0 || len > 63 || pos + 1 + len > v.byteLength) {
+        throw new Error('DNS label is malformed')
+      }
       pos++
+      decodedBytes += len + 1
+      if (decodedBytes > 255) throw new Error('DNS name exceeds 255 bytes')
       let label = ''
       for (let i = 0; i < len; i++) label += String.fromCharCode(v.getUint8(pos++))
       labels.push(label)
@@ -100,16 +148,19 @@ function parseDnsWire(buf: ArrayBuffer): WireResult {
 
   let off = 12
   const [, afterQ] = readName(off)
+  if (afterQ + 4 > v.byteLength) throw new Error('DNS question is truncated')
   off = afterQ + 4
 
   for (let i = 0; i < ancount && off < v.byteLength; i++) {
     const [, afterName] = readName(off)
     off = afterName
+    if (off + 10 > v.byteLength) throw new Error('DNS answer header is truncated')
     const rrtype = v.getUint16(off); off += 2
     off += 2
     off += 4
     const rdlen = v.getUint16(off); off += 2
     const rdstart = off
+    if (rdstart + rdlen > v.byteLength) throw new Error('DNS answer data is truncated')
     if (rrtype === 1 && rdlen === 4) {
       answers.push(`${v.getUint8(off)}.${v.getUint8(off+1)}.${v.getUint8(off+2)}.${v.getUint8(off+3)}`)
     } else if (rrtype === 28 && rdlen === 16) {
@@ -128,6 +179,7 @@ function parseDnsWire(buf: ArrayBuffer): WireResult {
       const parts: string[] = []
       while (pos < rdstart + rdlen) {
         const slen = v.getUint8(pos++)
+        if (pos + slen > rdstart + rdlen) throw new Error('DNS TXT record is truncated')
         let s = ''
         for (let j = 0; j < slen; j++) s += String.fromCharCode(v.getUint8(pos++))
         parts.push(s)
@@ -145,19 +197,18 @@ export async function checkDns(monitor: Monitor): Promise<CheckResult> {
   const resolverUrl = normalizeDoHUrl(monitor.dnsResolverUrl!)
   const hostname = monitor.dnsHostname!
   const recordType = monitor.dnsRecordType ?? 'A'
+  const timeoutSeconds = checkTimeoutSeconds(monitor)
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000)
 
   const sep = resolverUrl.includes('?') ? '&' : '?'
   const queryUrl = `${resolverUrl}${sep}name=${encodeURIComponent(hostname)}&type=${encodeURIComponent(recordType)}`
 
   try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), (monitor.timeout || 30) * 1000)
-
     const response = await fetch(queryUrl, {
       headers: { Accept: 'application/dns-json' },
       signal: controller.signal,
     })
-    clearTimeout(timeoutId)
     const responseTimeMs = Date.now() - start
 
     if (!response.ok) {
@@ -170,15 +221,18 @@ export async function checkDns(monitor: Monitor): Promise<CheckResult> {
     let answerData: string[]
 
     if (contentType.includes('dns-message') || contentType.includes('octet-stream')) {
-      const wire = await readArrayBufferWithLimit(response, MAX_DNS_RESPONSE_BYTES)
+      const wire = await readArrayBufferWithLimit(response, MAX_DNS_RESPONSE_BYTES, controller.signal)
       const parsed = parseDnsWire(wire)
       rcode = parsed.rcode
       answerData = parsed.answers
     } else if (contentType.includes('json')) {
       let data: DoHResponse
       try {
-        data = JSON.parse(await readTextWithLimit(response, MAX_DNS_RESPONSE_BYTES)) as DoHResponse
-      } catch {
+        data = JSON.parse(
+          await readTextWithLimit(response, MAX_DNS_RESPONSE_BYTES, controller.signal),
+        ) as DoHResponse
+      } catch (error) {
+        if (isAbortError(error, controller.signal)) throw error
         return { status: 'down', responseTimeMs, message: 'DoH resolver returned invalid JSON' }
       }
       rcode = data.Status
@@ -186,8 +240,9 @@ export async function checkDns(monitor: Monitor): Promise<CheckResult> {
     } else {
       let raw: ArrayBuffer
       try {
-        raw = await readArrayBufferWithLimit(response, MAX_DNS_RESPONSE_BYTES)
-      } catch {
+        raw = await readArrayBufferWithLimit(response, MAX_DNS_RESPONSE_BYTES, controller.signal)
+      } catch (error) {
+        if (isAbortError(error, controller.signal)) throw error
         return { status: 'down', responseTimeMs, message: 'DoH resolver returned unreadable response' }
       }
       try {
@@ -226,29 +281,29 @@ export async function checkDns(monitor: Monitor): Promise<CheckResult> {
 
   } catch (err) {
     const responseTimeMs = Date.now() - start
-    if (err instanceof Error && err.name === 'AbortError') {
-      return { status: 'down', responseTimeMs, message: `Timeout after ${monitor.timeout ?? 30}s` }
+    if (isAbortError(err, controller.signal)) {
+      return { status: 'down', responseTimeMs, message: `Timeout after ${timeoutSeconds}s` }
     }
     return { status: 'down', responseTimeMs, message: String(err) }
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 
-function isUnreachable(err: unknown): boolean {
-  const s = String(err).toLowerCase()
-  return (
-    s.includes('econnrefused') || s.includes('connection refused') ||
-    s.includes('enotfound') || s.includes('enetunreach') || s.includes('ehostunreach') ||
-    s.includes('no such host') || s.includes('name or service not known')
-  )
+function isExplicitHttpProtocolMismatch(error: unknown): boolean {
+  const message = String(error).toLowerCase()
+  return message.includes('invalid http response')
+    || message.includes('invalid character in http response')
+    || message.includes('response parsing failed')
 }
 
 export async function checkPing(monitor: Monitor): Promise<CheckResult> {
   const start = Date.now()
   const raw = monitor.url!
   const target = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`
-
+  const timeoutSeconds = checkTimeoutSeconds(monitor)
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), (monitor.timeout || 30) * 1000)
+  const timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000)
 
   try {
     const response = await fetch(target, {
@@ -256,25 +311,28 @@ export async function checkPing(monitor: Monitor): Promise<CheckResult> {
       redirect: 'follow',
       signal: controller.signal,
     })
-    clearTimeout(timeoutId)
     const responseTimeMs = Date.now() - start
     return { status: 'up', responseTimeMs, message: `Ping OK · HTTP ${response.status}` }
   } catch (err) {
-    clearTimeout(timeoutId)
     const responseTimeMs = Date.now() - start
-    if (err instanceof Error && err.name === 'AbortError') {
-      return { status: 'down', responseTimeMs, message: `Timeout after ${monitor.timeout ?? 30}s` }
+    if (isAbortError(err, controller.signal)) {
+      return { status: 'down', responseTimeMs, message: `Timeout after ${timeoutSeconds}s` }
     }
-    if (isUnreachable(err)) {
-      const msg = String(err)
-      return { status: 'down', responseTimeMs, message: msg, sslError: isSslError(msg) }
+    // Workers fetch proves that the TCP connection opened before reporting
+    // these narrow protocol-decoding failures. Preserve port-monitor behavior
+    // without treating opaque/general fetch failures as successful checks.
+    if (isExplicitHttpProtocolMismatch(err)) {
+      try {
+        const port = new URL(target).port || (target.startsWith('https') ? '443' : '80')
+        return { status: 'up', responseTimeMs, message: `Ping OK · :${port} open` }
+      } catch {
+        return { status: 'up', responseTimeMs, message: 'Ping OK · port open' }
+      }
     }
-    try {
-      const port = new URL(target).port || (target.startsWith('https') ? '443' : '80')
-      return { status: 'up', responseTimeMs, message: `Ping OK · :${port} open` }
-    } catch {
-      return { status: 'up', responseTimeMs, message: 'Ping OK · port open' }
-    }
+    const message = String(err)
+    return { status: 'down', responseTimeMs, message, sslError: isSslError(message) }
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 
@@ -285,6 +343,9 @@ function isSslError(message: string): boolean {
 
 export async function checkHttp(monitor: Monitor, locale = 'en', encryptionKey?: string): Promise<CheckResult> {
   const start = Date.now()
+  const timeoutSeconds = checkTimeoutSeconds(monitor)
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutSeconds * 1000)
 
   try {
     const headers: Record<string, string> = {}
@@ -307,8 +368,6 @@ export async function checkHttp(monitor: Monitor, locale = 'en', encryptionKey?:
     }
 
     const method = monitor.method || 'GET'
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), (monitor.timeout || 30) * 1000)
 
     const init: RequestInit = {
       method,
@@ -331,11 +390,17 @@ export async function checkHttp(monitor: Monitor, locale = 'en', encryptionKey?:
     }
 
     const response = await fetch(targetUrl, init)
-    clearTimeout(timeoutId)
     const responseTimeMs = Date.now() - start
 
     if (monitor.authType === 'digest' && response.status === 401) {
-      const digestResult = await doDigestAuth(monitor, response, method, responseTimeMs, authPassword)
+      const digestResult = await doDigestAuth(
+        monitor,
+        response,
+        method,
+        responseTimeMs,
+        authPassword,
+        controller.signal,
+      )
       if (digestResult) return digestResult
     }
 
@@ -343,7 +408,11 @@ export async function checkHttp(monitor: Monitor, locale = 'en', encryptionKey?:
     if (response.status === expectedStatus) {
       if (monitor.jsonPath) {
         try {
-          const bodyText = await readTextWithLimit(response, MAX_JSON_RESPONSE_BYTES)
+          const bodyText = await readTextWithLimit(
+            response,
+            MAX_JSON_RESPONSE_BYTES,
+            controller.signal,
+          )
           const jsonData = JSON.parse(bodyText)
           const matched = JSONPath({
             path: monitor.jsonPath,
@@ -363,6 +432,7 @@ export async function checkHttp(monitor: Monitor, locale = 'en', encryptionKey?:
             }
           }
         } catch (e) {
+          if (isAbortError(e, controller.signal)) throw e
           return { status: 'down', statusCode: response.status, responseTimeMs, message: `Failed to parse JSON for query: ${String(e)}` }
         }
       }
@@ -372,11 +442,13 @@ export async function checkHttp(monitor: Monitor, locale = 'en', encryptionKey?:
 
   } catch (err) {
     const responseTimeMs = Date.now() - start
-    if (err instanceof Error && err.name === 'AbortError') {
-      return { status: 'down', responseTimeMs, message: msgTimeoutAfter(locale, monitor.timeout ?? 30) }
+    if (isAbortError(err, controller.signal)) {
+      return { status: 'down', responseTimeMs, message: msgTimeoutAfter(locale, timeoutSeconds) }
     }
     const msg = String(err)
     return { status: 'down', responseTimeMs, message: msg, sslError: isSslError(msg) }
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 
@@ -386,6 +458,7 @@ async function doDigestAuth(
   method: string,
   firstRtt: number,
   authPassword: string | null,
+  signal: AbortSignal,
 ): Promise<CheckResult | null> {
   const wwwAuth = firstResponse.headers.get('WWW-Authenticate')
   if (!wwwAuth || !wwwAuth.toLowerCase().startsWith('digest')) return null
@@ -418,10 +491,8 @@ async function doDigestAuth(
 
   const start2 = Date.now()
   try {
-    const controller = new AbortController()
-    const tid = setTimeout(() => controller.abort(), (monitor.timeout || 30) * 1000)
-    const res2 = await fetch(monitor.url!, { method, headers, signal: controller.signal })
-    clearTimeout(tid)
+    signal.throwIfAborted()
+    const res2 = await fetch(monitor.url!, { method, headers, signal })
     const responseTimeMs = firstRtt + (Date.now() - start2)
     const expected = monitor.expectedStatus || 200
     if (res2.status === expected) {
@@ -429,6 +500,7 @@ async function doDigestAuth(
     }
     return { status: 'down', statusCode: res2.status, responseTimeMs, message: `HTTP ${res2.status} (expected ${expected})` }
   } catch (err) {
+    if (isAbortError(err, signal)) throw err
     return { status: 'down', responseTimeMs: firstRtt, message: String(err) }
   }
 }

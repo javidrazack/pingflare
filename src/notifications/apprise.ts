@@ -6,6 +6,7 @@ export async function sendApprise(
   config: Record<string, string>,
   payload: NotificationPayload,
   locale: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (config.token) headers['Authorization'] = `Bearer ${config.token}`
@@ -19,6 +20,7 @@ export async function sendApprise(
       body: formatMessage(payload, locale),
       type: payload.status === 'up' ? 'success' : 'failure',
     }),
+    signal,
   })
   await assertResponseOk(response, 'Apprise')
 }

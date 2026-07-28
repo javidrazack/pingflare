@@ -23,8 +23,9 @@ Obtain a token by calling `POST /api/auth/login`
 | GET | `/api/monitors/:id` | Get a monitor |
 | PUT | `/api/monitors/:id` | Update a monitor |
 | DELETE | `/api/monitors/:id` | Delete a monitor |
-| GET | `/api/monitors/:id/logs` | Status logs, supports `?hours=24&limit=500` |
+| GET | `/api/monitors/:id/logs` | Sparse transition/error/sample logs, supports `?hours=24&limit=500` |
 | GET | `/api/monitors/:id/incidents` | Downtime incidents |
+| GET | `/api/monitors/:id/analytics` | Consolidated exact 1/7/30/90-day uptime, daily history, count, and response average |
 | GET | `/api/monitors/:id/uptime` | Uptime percentage, supports `?days=90` |
 | GET | `/api/monitors/:id/daily` | Per-day uptime breakdown, supports `?days=90` |
 | GET | `/api/monitors/uptime-summary` | Batched uptime percentages, supports `?days=30` |
@@ -32,9 +33,11 @@ Obtain a token by calling `POST /api/auth/login`
 | GET | `/api/monitors/:id/heartbeat-token` | Get heartbeat token |
 | POST | `/api/monitors/:id/heartbeat-token/regenerate` | Rotate heartbeat token |
 | GET | `/api/monitors/:id/channels` | Notification channel IDs linked to the monitor |
-| POST | `/api/monitors/:id/reset-stats` | Clear logs/incidents and reset alert state |
+| POST | `/api/monitors/:id/reset-stats` | Clear rollups/logs/incidents, advance cache revision, and reset alert state |
 | GET/POST | `/api/monitors/:id/maintenance` | List or create maintenance windows |
 | DELETE | `/api/monitors/:id/maintenance/:maintenanceId` | Delete a maintenance window |
+
+Uptime windows use completed and current UTC calendar days. The one-day value is the current UTC day, not a rolling 24-hour window.
 
 ---
 
@@ -76,6 +79,8 @@ Obtain a token by calling `POST /api/auth/login`
 | DELETE | `/api/status-pages/:id` | Delete a status page |
 | GET | `/api/public/status/:slug` | Public data for a status page |
 | GET | `/api/public/status/:slug/monitors/:monitorId` | Public monitor detail |
+
+Public status reads return `429 PUBLIC_D1_READ_BUDGET_EXHAUSTED` when the account-wide UTC-day read allocation is spent. A page whose selected monitors have more than 20,000 historical manual-incident links returns `503 PUBLIC_INCIDENT_FEED_HISTORY_LIMIT`; archive old incident associations before retrying.
 
 ---
 
@@ -201,4 +206,4 @@ Ping monitors use `url` as the target and treat any HTTP response as reachable.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/backup` | Export a versioned configuration backup |
-| POST | `/api/backup/restore` | Validate and atomically restore a backup |
+| POST | `/api/backup/restore` | Validate, preflight the D1 indexed-write budget, and atomically restore a backup |

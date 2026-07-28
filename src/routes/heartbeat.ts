@@ -1,8 +1,13 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { eq } from 'drizzle-orm'
-import { getDb, heartbeatTokens, monitors, statusLogs, alertState } from '../db'
-import { processAlert, getLocale } from '../services/alert-manager'
+import { getDb, heartbeatTokens, monitors } from '../db'
+import {
+  drainNotificationDeliveries,
+  getLocale,
+  processAlert,
+} from '../services/alert-manager'
+import { persistInboundObservationWithRetry } from '../services/check-storage'
 import { msgHeartbeatReceived } from '../notifications/messages'
 import type { Env } from '../index'
 
@@ -30,33 +35,48 @@ async function handleHeartbeat(c: Context<{ Bindings: Env }>) {
   const locale = await getLocale(db)
   const receivedMsg = msgHeartbeatReceived(locale)
 
-  await db.update(heartbeatTokens)
-    .set({ lastPingAt: now })
-    .where(eq(heartbeatTokens.token, token))
-  await db.update(monitors)
-    .set({ lastCheckedAt: now })
-    .where(eq(monitors.id, monitor.id))
-
-  await db.insert(statusLogs).values({
-    id: crypto.randomUUID(),
-    monitorId: monitor.id,
+  const observation = {
+    monitor,
     status: 'up',
     message: 'notify.heartbeatReceived',
     responseTimeMs: null,
     checkedAt: now,
-  })
+    source: 'heartbeat',
+    resultCode: 'heartbeat_received',
+    inboundGuard: {
+      lastCheckedAt: monitor.lastCheckedAt,
+      lastPingAt: hb.lastPingAt,
+    },
+  } as const
+  const persisted = await persistInboundObservationWithRetry(
+    c.env,
+    observation,
+    (current, checkedAt) => current.type === 'heartbeat'
+      ? { ...observation, monitor: current, checkedAt }
+      : null,
+  )
+  if (persisted.acceptedObservations.length === 0) {
+    return c.json({ error: 'Heartbeat monitor changed while the ping was processed' }, 409)
+  }
 
+  const acceptedObservation = persisted.acceptedObservations[0]
   await processAlert({
     db,
-    monitor,
+    monitor: acceptedObservation.monitor,
+    observationRevision: acceptedObservation.observationRevision,
     status: 'up',
     message: receivedMsg,
     encryptionKey: c.env.ENCRYPTION_KEY,
   })
-
-  await db.update(alertState)
-    .set({ consecutiveMissed: 0, alertSentAt: null, consecutiveAlerts: 0, surgePausedUntil: null })
-    .where(eq(alertState.monitorId, monitor.id))
+  const backgroundDrain = drainNotificationDeliveries(db, c.env.ENCRYPTION_KEY).catch((error) => {
+    console.error('[heartbeat] notification delivery drain failed:', error)
+  })
+  try {
+    c.executionCtx.waitUntil(backgroundDrain)
+  } catch {
+    // Node/self-hosted Hono contexts have no execution context. The promise is
+    // still allowed to finish, and cron remains the durable fallback.
+  }
 
   return new Response(null, {
     status: 200,

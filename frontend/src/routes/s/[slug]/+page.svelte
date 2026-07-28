@@ -16,17 +16,26 @@
   let isProtected = false
   let wrongPassword = false
   let password = ''
+  let statusAccess = ''
   let protectedPage: { name: string; description: string | null } | null = null
   let ticker: ReturnType<typeof setInterval>
   let isFullscreen = false
   let countdown = 60
 
   async function load(pw = '') {
+    error = ''
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (pw) headers['X-Status-Password'] = pw
+    if (statusAccess) headers['X-Pingflare-Status-Access'] = statusAccess
+    else if (pw) headers['X-Status-Password'] = pw
     const res = await fetch(`/api/public/status/${slug}`, { headers })
+    const issuedAccess = res.headers.get('X-Pingflare-Status-Access')
+    if (issuedAccess) statusAccess = issuedAccess
     const json = await res.json()
     if (res.status === 401) {
+      if (statusAccess && password) {
+        statusAccess = ''
+        return load(password)
+      }
       isProtected = true
       wrongPassword = json.error === 'wrong_password'
       if (json.page) protectedPage = json.page

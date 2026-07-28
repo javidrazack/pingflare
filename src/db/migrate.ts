@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS monitors (
   interval integer DEFAULT 60 NOT NULL,
   active integer DEFAULT true NOT NULL,
   last_checked_at integer,
+  next_check_at integer DEFAULT 0 NOT NULL,
+  observation_revision text DEFAULT '' NOT NULL,
   last_status text DEFAULT 'pending' NOT NULL,
   reminder_interval_hours integer,
   tolerance_failures integer DEFAULT 1 NOT NULL,
@@ -48,6 +50,15 @@ CREATE TABLE IF NOT EXISTS monitors (
   dns_record_type text DEFAULT 'A',
   dns_resolver_url text,
   dns_expected_ip text,
+  history_revision integer DEFAULT 1 NOT NULL,
+  stats_day integer,
+  day_checks integer DEFAULT 0 NOT NULL,
+  day_up_count integer DEFAULT 0 NOT NULL,
+  day_down_count integer DEFAULT 0 NOT NULL,
+  day_response_count integer DEFAULT 0 NOT NULL,
+  day_response_sum_ms integer DEFAULT 0 NOT NULL,
+  day_response_min_ms integer,
+  day_response_max_ms integer,
   created_at integer DEFAULT (unixepoch()) NOT NULL,
   updated_at integer DEFAULT (unixepoch()) NOT NULL
 );
@@ -59,7 +70,40 @@ CREATE TABLE IF NOT EXISTS status_logs (
   message text,
   response_time_ms integer,
   checked_at integer NOT NULL,
+  colo text,
+  country_code text,
+  origin_ip text,
+  source text,
   FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON UPDATE no action ON DELETE cascade
+);
+
+CREATE TABLE IF NOT EXISTS monitor_daily_rollups (
+  monitor_id text NOT NULL,
+  day integer NOT NULL,
+  checks integer DEFAULT 0 NOT NULL,
+  up_count integer DEFAULT 0 NOT NULL,
+  down_count integer DEFAULT 0 NOT NULL,
+  response_count integer DEFAULT 0 NOT NULL,
+  response_sum_ms integer DEFAULT 0 NOT NULL,
+  response_min_ms integer,
+  response_max_ms integer,
+  PRIMARY KEY(monitor_id, day),
+  FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON UPDATE no action ON DELETE cascade
+);
+
+CREATE INDEX IF NOT EXISTS idx_monitor_daily_day ON monitor_daily_rollups (day);
+
+CREATE TABLE IF NOT EXISTS scheduler_leases (
+  name text PRIMARY KEY NOT NULL,
+  holder text NOT NULL,
+  lease_until integer NOT NULL,
+  updated_at integer NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS quota_budgets (
+  key text PRIMARY KEY NOT NULL,
+  day integer NOT NULL,
+  used integer DEFAULT 0 NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS incidents (
@@ -80,6 +124,30 @@ CREATE TABLE IF NOT EXISTS notification_channels (
   is_default integer DEFAULT false NOT NULL,
   created_at integer DEFAULT (unixepoch()) NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS notification_deliveries (
+  id text PRIMARY KEY NOT NULL,
+  dedupe_key text NOT NULL UNIQUE,
+  monitor_id text NOT NULL,
+  event_type text NOT NULL,
+  payload text NOT NULL,
+  remaining_channel_ids text NOT NULL,
+  attempts integer DEFAULT 0 NOT NULL,
+  delivered_count integer DEFAULT 0 NOT NULL,
+  state_applied integer DEFAULT false NOT NULL,
+  next_attempt_at integer NOT NULL,
+  claim_token text,
+  claim_until integer,
+  last_error text,
+  created_at integer DEFAULT (unixepoch()) NOT NULL,
+  updated_at integer DEFAULT (unixepoch()) NOT NULL,
+  FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON UPDATE no action ON DELETE cascade
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_due
+  ON notification_deliveries (next_attempt_at, claim_until);
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_monitor
+  ON notification_deliveries (monitor_id, created_at);
 
 CREATE TABLE IF NOT EXISTS monitor_notifications (
   monitor_id text NOT NULL,
@@ -180,6 +248,17 @@ CREATE TABLE IF NOT EXISTS incident_monitors (
   FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON UPDATE no action ON DELETE cascade
 );
 
+CREATE TABLE IF NOT EXISTS incident_feed_monitor_counts (
+  monitor_id text PRIMARY KEY NOT NULL,
+  link_count integer DEFAULT 0 NOT NULL,
+  FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON UPDATE no action ON DELETE cascade
+);
+
+INSERT OR IGNORE INTO incident_feed_monitor_counts (monitor_id, link_count)
+SELECT monitor_id, COUNT(*)
+FROM incident_monitors
+GROUP BY monitor_id;
+
 CREATE TABLE IF NOT EXISTS incident_report_events (
   incident_id text NOT NULL,
   event_id text NOT NULL,
@@ -209,7 +288,38 @@ CREATE TABLE IF NOT EXISTS maintenance_windows (
   reason text,
   FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON UPDATE no action ON DELETE cascade
 );
+
+CREATE INDEX IF NOT EXISTS idx_incident_monitors_monitor
+  ON incident_monitors (monitor_id, incident_id);
+CREATE INDEX IF NOT EXISTS idx_incident_report_events_event
+  ON incident_report_events (event_id, incident_id);
+CREATE INDEX IF NOT EXISTS idx_incident_updates_incident_created_id
+  ON incident_updates (incident_id, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_maintenance_monitor_window
+  ON maintenance_windows (monitor_id, start_at, end_at);
+CREATE INDEX IF NOT EXISTS idx_incidents_monitor_started_id
+  ON incidents (monitor_id, started_at, id);
 `
+
+const INCIDENT_FEED_TRIGGER_SQL = [
+  `CREATE TRIGGER IF NOT EXISTS trg_incident_feed_count_insert
+    AFTER INSERT ON incident_monitors
+    BEGIN
+      INSERT INTO incident_feed_monitor_counts (monitor_id, link_count)
+      VALUES (NEW.monitor_id, 1)
+      ON CONFLICT(monitor_id) DO UPDATE
+      SET link_count = link_count + 1;
+    END`,
+  `CREATE TRIGGER IF NOT EXISTS trg_incident_feed_count_delete
+    AFTER DELETE ON incident_monitors
+    BEGIN
+      UPDATE incident_feed_monitor_counts
+      SET link_count = MAX(0, link_count - 1)
+      WHERE monitor_id = OLD.monitor_id;
+      DELETE FROM incident_feed_monitor_counts
+      WHERE monitor_id = OLD.monitor_id AND link_count = 0;
+    END`,
+]
 
 export async function ensureSchema(d1: D1Database): Promise<void> {
   if (migrated) return
@@ -220,6 +330,9 @@ export async function ensureSchema(d1: D1Database): Promise<void> {
         .map(s => s.trim())
         .filter(s => s.length > 0)
       await d1.batch(statements.map(s => d1.prepare(s)))
+      for (const triggerSql of INCIDENT_FEED_TRIGGER_SQL) {
+        await d1.prepare(triggerSql).run()
+      }
 
       const alterStatements = [
         `ALTER TABLE status_pages ADD COLUMN show_all_monitors integer DEFAULT false NOT NULL`,
@@ -240,6 +353,18 @@ export async function ensureSchema(d1: D1Database): Promise<void> {
         `ALTER TABLE monitors ADD COLUMN ram_threshold integer`,
         `ALTER TABLE monitors ADD COLUMN disk_threshold integer`,
         `ALTER TABLE monitors ADD COLUMN last_metrics text`,
+        `ALTER TABLE monitors ADD COLUMN next_check_at integer DEFAULT 0 NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN observation_revision text DEFAULT '' NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN history_revision integer DEFAULT 1 NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN stats_day integer`,
+        `ALTER TABLE monitors ADD COLUMN day_checks integer DEFAULT 0 NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN day_up_count integer DEFAULT 0 NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN day_down_count integer DEFAULT 0 NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN day_response_count integer DEFAULT 0 NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN day_response_sum_ms integer DEFAULT 0 NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN day_response_min_ms integer`,
+        `ALTER TABLE monitors ADD COLUMN day_response_max_ms integer`,
+        `ALTER TABLE status_logs ADD COLUMN source text`,
         `ALTER TABLE status_pages ADD COLUMN logo_url text`,
         `ALTER TABLE status_pages ADD COLUMN brand_color text DEFAULT '#B45309' NOT NULL`,
         `ALTER TABLE status_pages ADD COLUMN theme text DEFAULT 'system' NOT NULL`,
@@ -258,6 +383,49 @@ export async function ensureSchema(d1: D1Database): Promise<void> {
         } catch (error) {
           if (!String(error).toLowerCase().includes('duplicate column')) throw error
         }
+      }
+      await d1.prepare(`
+        UPDATE monitors
+        SET next_check_at = last_checked_at + interval
+        WHERE next_check_at = 0
+          AND last_checked_at IS NOT NULL
+      `).run()
+      await d1.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_monitors_active_next_check
+        ON monitors (active, next_check_at)
+      `).run()
+      await d1.prepare(`
+        UPDATE incidents
+        SET resolved_at = started_at, duration_seconds = 0
+        WHERE id IN (
+          SELECT id
+          FROM (
+            SELECT
+              id,
+              ROW_NUMBER() OVER (
+                PARTITION BY monitor_id
+                ORDER BY started_at, id
+              ) AS open_rank
+            FROM incidents
+            WHERE resolved_at IS NULL
+          )
+          WHERE open_rank > 1
+        )
+      `).run()
+      await d1.prepare(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_incidents_one_open
+        ON incidents (monitor_id)
+        WHERE resolved_at IS NULL
+      `).run()
+      const pendingLegacyLog = await d1.prepare(
+        `SELECT 1 AS pending FROM status_logs WHERE source IS NULL LIMIT 1`,
+      ).first<{ pending: number }>()
+      if (!pendingLegacyLog) {
+        await d1.prepare(`
+          INSERT INTO settings (key, value)
+          VALUES ('_schema_legacy_gap_catchup_v1', '1')
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        `).run()
       }
       migrated = true
     })()

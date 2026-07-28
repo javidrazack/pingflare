@@ -6,6 +6,7 @@ export async function sendNtfy(
   config: Record<string, string>,
   payload: NotificationPayload,
   locale: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const priority = payload.status === 'down' ? '4' : '2'
   const tag = payload.status === 'up' ? 'white_check_mark' : 'red_circle'
@@ -20,6 +21,7 @@ export async function sendNtfy(
     method: 'POST',
     headers,
     body: formatMessage(payload, locale),
+    signal,
   })
   await assertResponseOk(response, 'ntfy')
 }

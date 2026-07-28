@@ -1,9 +1,13 @@
 import { Hono, type Context } from 'hono'
 import { and, asc, count, desc, eq, like, or, type SQL } from 'drizzle-orm'
-import { getDb, monitors, heartbeatTokens, alertState, monitorNotifications, statusLogs, incidents, maintenanceWindows } from '../db'
+import { getDb, monitors, heartbeatTokens, alertState, monitorNotifications, maintenanceWindows } from '../db'
 import { requireAuth } from '../middleware/auth'
 import { encryptField, isEncryptedValue } from '../utils'
 import { readJsonBodyWithLimit, RequestBodyTooLargeError } from '../request'
+import {
+  assertDestructiveMonitorWriteBudget,
+  DestructiveD1WriteBudgetError,
+} from '../services/destructive-write-budget'
 import type { Env } from '../index'
 
 const router = new Hono<{ Bindings: Env }>()
@@ -12,6 +16,18 @@ const MONITOR_TYPES = new Set(['http', 'heartbeat', 'agent', 'dns', 'ping'])
 const AUTH_TYPES = new Set(['none', 'basic', 'digest', 'bearer'])
 const METHODS = new Set(['HEAD', 'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'])
 const MAX_MONITOR_BODY_BYTES = 128 * 1024
+
+function destructiveBudgetResponse(
+  c: Context<{ Bindings: Env }>,
+  error: DestructiveD1WriteBudgetError,
+): Response {
+  return c.json({
+    error: error.message,
+    code: 'D1_DESTRUCTIVE_WRITE_BUDGET_EXCEEDED',
+    estimatedWrites: error.estimatedWrites,
+    limit: error.limit,
+  }, 409)
+}
 
 function sanitizeMonitor<T extends typeof monitors.$inferSelect>(monitor: T): T {
   return { ...monitor, authPassword: null, authToken: null }
@@ -166,8 +182,22 @@ router.patch('/bulk', async (c) => {
       body.ids.some((id: unknown) => typeof id !== 'string')) {
     return c.json({ error: 'Select between 1 and 100 monitors' }, 400)
   }
+  const idsJson = JSON.stringify(body.ids)
   if (body.action === 'delete') {
-    await c.env.DB.batch(body.ids.map((id: string) => c.env.DB.prepare('DELETE FROM monitors WHERE id = ?').bind(id)))
+    try {
+      await assertDestructiveMonitorWriteBudget(c.env.DB, 'delete', {
+        monitorIds: body.ids,
+      })
+    } catch (error) {
+      if (error instanceof DestructiveD1WriteBudgetError) {
+        return destructiveBudgetResponse(c, error)
+      }
+      throw error
+    }
+    await c.env.DB.prepare(`
+      DELETE FROM monitors
+      WHERE id IN (SELECT value FROM json_each(?))
+    `).bind(idsJson).run()
     return c.json({ ok: true, affected: body.ids.length })
   }
   if (body.action !== 'pause' && body.action !== 'resume') {
@@ -175,9 +205,14 @@ router.patch('/bulk', async (c) => {
   }
   const active = body.action === 'resume'
   const now = Math.floor(Date.now() / 1000)
-  await c.env.DB.batch(body.ids.map((id: string) =>
-    c.env.DB.prepare('UPDATE monitors SET active = ?, updated_at = ? WHERE id = ?').bind(active ? 1 : 0, now, id)
-  ))
+  await c.env.DB.prepare(`
+    UPDATE monitors SET
+      active = ?,
+      next_check_at = CASE WHEN ? = 1 THEN ? ELSE next_check_at END,
+      observation_revision = lower(hex(randomblob(16))),
+      updated_at = ?
+    WHERE id IN (SELECT value FROM json_each(?))
+  `).bind(active ? 1 : 0, active ? 1 : 0, now, now, idsJson).run()
   return c.json({ ok: true, affected: body.ids.length })
 })
 
@@ -257,8 +292,14 @@ router.post('/', async (c) => {
   }
 
   if (Array.isArray(body.channelIds)) {
-    for (const channelId of body.channelIds) {
-      await db.insert(monitorNotifications).values({ monitorId: id, channelId })
+    const channelIdsJson = JSON.stringify(body.channelIds)
+    if (body.channelIds.length > 0) {
+      await c.env.DB.prepare(`
+        INSERT INTO monitor_notifications (monitor_id, channel_id)
+        SELECT ?, value FROM json_each(?)
+        WHERE true
+        ON CONFLICT (monitor_id, channel_id) DO NOTHING
+      `).bind(id, channelIdsJson).run()
     }
   }
 
@@ -293,13 +334,21 @@ router.put('/:id', async (c) => {
       ? body.authUsername
       : (sameAuthType ? existing.authUsername : null))
     : null
+  const nextInterval = body.interval ?? existing.interval
+  const nextActive = body.active ?? existing.active
+  // A successful edit may change the target or any check-affecting option.
+  // Schedule active monitors immediately so the API never leaves a new
+  // configuration unverified behind the old interval cursor.
+  const nextCheckAt = nextActive ? now : existing.nextCheckAt
 
   await db.update(monitors).set({
     name: body.name ?? existing.name,
     type: nextType,
     tags: body.tags !== undefined ? JSON.stringify(body.tags) : existing.tags,
-    interval: body.interval ?? existing.interval,
-    active: body.active ?? existing.active,
+    interval: nextInterval,
+    active: nextActive,
+    nextCheckAt,
+    observationRevision: crypto.randomUUID(),
     reminderIntervalHours: body.reminderIntervalHours ?? existing.reminderIntervalHours,
     toleranceFailures: body.toleranceFailures ?? existing.toleranceFailures,
     url: body.url ?? existing.url,
@@ -343,10 +392,20 @@ router.put('/:id', async (c) => {
   }
 
   if (Array.isArray(body.channelIds)) {
-    await db.delete(monitorNotifications).where(eq(monitorNotifications.monitorId, id))
-    for (const channelId of body.channelIds) {
-      await db.insert(monitorNotifications).values({ monitorId: id, channelId })
+    const statements = [
+      c.env.DB.prepare(
+        'DELETE FROM monitor_notifications WHERE monitor_id = ?',
+      ).bind(id),
+    ]
+    if (body.channelIds.length > 0) {
+      statements.push(c.env.DB.prepare(`
+        INSERT INTO monitor_notifications (monitor_id, channel_id)
+        SELECT ?, value FROM json_each(?)
+        WHERE true
+        ON CONFLICT (monitor_id, channel_id) DO NOTHING
+      `).bind(id, JSON.stringify(body.channelIds)))
     }
+    await c.env.DB.batch(statements)
   }
 
   const updated = await db.query.monitors.findFirst({ where: eq(monitors.id, id) })
@@ -356,6 +415,16 @@ router.put('/:id', async (c) => {
 router.delete('/:id', async (c) => {
   const db = getDb(c.env.DB)
   const id = c.req.param('id')
+  try {
+    await assertDestructiveMonitorWriteBudget(c.env.DB, 'delete', {
+      monitorIds: [id],
+    })
+  } catch (error) {
+    if (error instanceof DestructiveD1WriteBudgetError) {
+      return destructiveBudgetResponse(c, error)
+    }
+    throw error
+  }
   await db.delete(monitors).where(eq(monitors.id, id))
   return c.json({ ok: true })
 })
@@ -390,20 +459,49 @@ router.post('/:id/reset-stats', async (c) => {
   const monitor = await db.query.monitors.findFirst({ where: eq(monitors.id, id) })
   if (!monitor) return c.json({ error: 'Not found' }, 404)
 
-  await db.delete(statusLogs).where(eq(statusLogs.monitorId, id))
-  await db.delete(incidents).where(eq(incidents.monitorId, id))
-  await db.update(alertState).set({
-    consecutiveFailures: 0,
-    consecutiveMissed: 0,
-    alertSentAt: null,
-    consecutiveAlerts: 0,
-    lastReminderAt: null,
-    surgePausedUntil: null,
-  }).where(eq(alertState.monitorId, id))
-  await db.update(monitors).set({
-    lastStatus: 'pending',
-    lastCheckedAt: null,
-  }).where(eq(monitors.id, id))
+  try {
+    await assertDestructiveMonitorWriteBudget(c.env.DB, 'reset', {
+      monitorIds: [id],
+    })
+  } catch (error) {
+    if (error instanceof DestructiveD1WriteBudgetError) {
+      return destructiveBudgetResponse(c, error)
+    }
+    throw error
+  }
+
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM status_logs WHERE monitor_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM monitor_daily_rollups WHERE monitor_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM incidents WHERE monitor_id = ?').bind(id),
+    c.env.DB.prepare(`
+      UPDATE alert_state SET
+        consecutive_failures = 0,
+        consecutive_missed = 0,
+        alert_sent_at = NULL,
+        consecutive_alerts = 0,
+        last_reminder_at = NULL,
+        surge_paused_until = NULL
+      WHERE monitor_id = ?
+    `).bind(id),
+    c.env.DB.prepare(`
+      UPDATE monitors SET
+        last_status = 'pending',
+        last_checked_at = NULL,
+        next_check_at = 0,
+        observation_revision = ?,
+        history_revision = history_revision + 1,
+        stats_day = NULL,
+        day_checks = 0,
+        day_up_count = 0,
+        day_down_count = 0,
+        day_response_count = 0,
+        day_response_sum_ms = 0,
+        day_response_min_ms = NULL,
+        day_response_max_ms = NULL
+      WHERE id = ?
+    `).bind(crypto.randomUUID(), id),
+  ])
 
   return c.json({ ok: true })
 })

@@ -35,6 +35,11 @@ jobs:
       - name: 🔎 Type-check backend
         run: npx tsc --noEmit
 
+      - name: 🗄️ Smoke-test D1 migration chain
+        run: npx wrangler d1 migrations apply DB --local --persist-to /tmp/pingflare-d1-smoke
+        env:
+          WRANGLER_LOG_PATH: /tmp/pingflare-wrangler-migrations.log
+
       - name: 🧪 Run tests
         run: npm test
 
@@ -66,6 +71,11 @@ jobs:
 
       - name: 🏗️ Build frontend
         run: npm run build -w frontend
+
+      - name: 📦 Validate Worker bundle
+        run: npx wrangler deploy --dry-run --outdir /tmp/pingflare-worker
+        env:
+          WRANGLER_LOG_PATH: /tmp/pingflare-wrangler-dry-run.log
 
       - name: 🛡️ Audit frontend dependencies
         run: npm audit --workspace frontend --audit-level=high

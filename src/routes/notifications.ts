@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono'
 import { eq, desc } from 'drizzle-orm'
-import { getDb, notificationChannels, notificationTestRuns, monitors, monitorNotifications } from '../db'
+import { getDb, notificationChannels, notificationTestRuns } from '../db'
 import { requireAuth } from '../middleware/auth'
 import { sendNotification } from '../services/notifier'
 import { SENSITIVE_FIELDS, isEncryptedValue, encryptField } from '../utils'
@@ -9,6 +9,7 @@ import type { Env } from '../index'
 
 const router = new Hono<{ Bindings: Env }>()
 router.use('*', requireAuth)
+const NOTIFICATION_TEST_TIMEOUT_MS = 12_000
 const CHANNEL_TYPES = new Set([
   'discord', 'slack', 'telegram', 'email', 'ntfy', 'pushover', 'webhook',
   'apprise', 'googlechat', 'msteams', 'matrix', 'pagerduty', 'twilio',
@@ -194,14 +195,14 @@ router.post('/:id/apply-all-monitors', async (c) => {
   })
   if (!ch) return c.json({ error: 'Not found' }, 404)
 
-  const allMonitors = await db.select().from(monitors)
-  for (const monitor of allMonitors) {
-    await db.insert(monitorNotifications)
-      .values({ monitorId: monitor.id, channelId })
-      .onConflictDoNothing()
-  }
+  const result = await c.env.DB.prepare(`
+    INSERT INTO monitor_notifications (monitor_id, channel_id)
+    SELECT id, ? FROM monitors
+    WHERE true
+    ON CONFLICT (monitor_id, channel_id) DO NOTHING
+  `).bind(channelId).run()
 
-  return c.json({ ok: true, applied: allMonitors.length })
+  return c.json({ ok: true, applied: Number(result.meta.changes ?? 0) })
 })
 
 router.post('/:id/test', async (c) => {
@@ -219,7 +220,7 @@ router.post('/:id/test', async (c) => {
       monitor: { id: 'test', name: 'Test Monitor', type: 'http', url: 'https://example.com' },
       status: 'up',
       message: 'This is a test notification from Pingflare.',
-    }, c.env.ENCRYPTION_KEY)
+    }, c.env.ENCRYPTION_KEY, AbortSignal.timeout(NOTIFICATION_TEST_TIMEOUT_MS))
     const latencyMs = Math.max(0, Math.round(performance.now() - started))
     const run = {
       id: crypto.randomUUID(),

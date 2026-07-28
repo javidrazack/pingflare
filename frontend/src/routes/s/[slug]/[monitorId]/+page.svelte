@@ -26,6 +26,7 @@
     uptime7: number | null
     uptime30: number | null
     uptime90: number | null
+    historyDays: number
     avgResponseMs: number | null
     daily: DailyUptime[]
     logs: { checkedAt: number; status: string; responseTimeMs: number | null; message: string | null }[]
@@ -38,14 +39,23 @@
   let isProtected = false
   let wrongPassword = false
   let password = ''
+  let statusAccess = ''
   let ticker: ReturnType<typeof setInterval>
 
   async function load(pw = '') {
+    error = ''
     const headers: Record<string, string> = {}
-    if (pw) headers['X-Status-Password'] = pw
+    if (statusAccess) headers['X-Pingflare-Status-Access'] = statusAccess
+    else if (pw) headers['X-Status-Password'] = pw
     const res = await fetch(`/api/public/status/${slug}/monitors/${monitorId}`, { headers })
+    const issuedAccess = res.headers.get('X-Pingflare-Status-Access')
+    if (issuedAccess) statusAccess = issuedAccess
     const json = await res.json()
     if (res.status === 401) {
+      if (statusAccess && password) {
+        statusAccess = ''
+        return load(password)
+      }
       isProtected = true
       wrongPassword = json.error === 'wrong_password'
       loading = false
@@ -227,7 +237,9 @@
       </div>
 
       <div class="card">
-        <h2 class="text-sm font-semibold mb-4" style="color: rgb(var(--text))">{$t('monitor.uptime90d')}</h2>
+        <h2 class="text-sm font-semibold mb-4" style="color: rgb(var(--text))">
+          {$t('monitor.uptimeWindow', { days: data.historyDays })}
+        </h2>
         <UptimeChart data={data.daily} />
       </div>
 

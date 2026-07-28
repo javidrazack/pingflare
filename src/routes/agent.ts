@@ -1,7 +1,11 @@
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
-import { getDb, monitors, heartbeatTokens, statusLogs, alertState } from '../db'
-import { processAlert } from '../services/alert-manager'
+import { getDb, monitors, heartbeatTokens } from '../db'
+import {
+  drainNotificationDeliveries,
+  processAlert,
+} from '../services/alert-manager'
+import { persistInboundObservationWithRetry } from '../services/check-storage'
 import { evaluateAgentPayload, parseAgentPayload } from '../services/agent-status'
 import { buildAgentInstaller } from '../services/agent-installer'
 import { readJsonBodyWithLimit, RequestBodyTooLargeError } from '../request'
@@ -24,8 +28,8 @@ router.get('/install/:token', async (c) => {
     where: eq(monitors.id, tokenRecord.monitorId),
   })
 
-  if (!monitor || monitor.type !== 'agent') {
-    return c.text('Not an agent monitor', 400)
+  if (!monitor || monitor.type !== 'agent' || !monitor.active) {
+    return c.text('Not an active agent monitor', 400)
   }
 
   const script = buildAgentInstaller(tokenRecord.token, new URL(c.req.url).origin)
@@ -54,8 +58,8 @@ router.post('/push/:token', async (c) => {
     where: eq(monitors.id, tokenRecord.monitorId),
   })
 
-  if (!monitor || monitor.type !== 'agent') {
-    return c.text('Not an agent monitor', 400)
+  if (!monitor || monitor.type !== 'agent' || !monitor.active) {
+    return c.text('Not an active agent monitor', 400)
   }
 
   let rawBody: unknown
@@ -73,31 +77,70 @@ router.post('/push/:token', async (c) => {
   }
   const now = Math.floor(Date.now() / 1000)
 
-  const { status, message } = evaluateAgentPayload(monitor, body)
-  const snapshot = { ...body, status, message, evaluatedAt: now }
+  const unhealthyContainers = body.docker.filter((container) =>
+    container.status !== 'running' || container.health?.includes('unhealthy'),
+  ).length
+  const buildObservation = (
+    subject: typeof monitor,
+    checkedAt = now,
+  ) => {
+    if (!subject || subject.type !== 'agent') return null
+    const evaluated = evaluateAgentPayload(subject, body)
+    const snapshot = {
+      ...body,
+      status: evaluated.status,
+      message: evaluated.message,
+      evaluatedAt: checkedAt,
+    }
+    return {
+      monitor: subject,
+      status: evaluated.status,
+      message: evaluated.message,
+      responseTimeMs: null,
+      checkedAt,
+      source: 'agent' as const,
+      resultCode: evaluated.status === 'up' ? 'agent_ok' : 'agent_threshold',
+      lastMetrics: JSON.stringify(snapshot),
+      inboundGuard: {
+        lastCheckedAt: subject.lastCheckedAt,
+        lastPingAt: tokenRecord.lastPingAt,
+      },
+      agentMetrics: {
+        cpu: body.cpu,
+        ram: body.ram,
+        disk: body.disk,
+        unhealthyContainers,
+      },
+    }
+  }
+  const observation = buildObservation(monitor)!
+  const persisted = await persistInboundObservationWithRetry(
+    c.env,
+    observation,
+    buildObservation,
+  )
+  if (persisted.acceptedObservations.length === 0) {
+    return c.json({ error: 'Agent monitor changed while the payload was processed' }, 409)
+  }
 
-  await db.update(heartbeatTokens)
-    .set({ lastPingAt: now })
-    .where(eq(heartbeatTokens.monitorId, monitor.id))
-  await db.update(monitors)
-    .set({ lastMetrics: JSON.stringify(snapshot), lastCheckedAt: now })
-    .where(eq(monitors.id, monitor.id))
-  await db.insert(statusLogs).values({
-    id: crypto.randomUUID(),
-    monitorId: monitor.id,
-    status,
-    message,
-    responseTimeMs: null,
-    checkedAt: now,
-  })
-
+  const acceptedObservation = persisted.acceptedObservations[0]
   await processAlert({
     db,
-    monitor,
-    status,
-    message,
+    monitor: acceptedObservation.monitor,
+    observationRevision: acceptedObservation.observationRevision,
+    status: acceptedObservation.status,
+    message: acceptedObservation.message,
     encryptionKey: c.env.ENCRYPTION_KEY,
   })
+  const backgroundDrain = drainNotificationDeliveries(db, c.env.ENCRYPTION_KEY).catch((error) => {
+    console.error('[agent] notification delivery drain failed:', error)
+  })
+  try {
+    c.executionCtx.waitUntil(backgroundDrain)
+  } catch {
+    // Node/self-hosted Hono contexts have no execution context. The promise is
+    // still allowed to finish, and cron remains the durable fallback.
+  }
 
   return c.json({ ok: true })
 })

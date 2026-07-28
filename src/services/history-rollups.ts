@@ -1,0 +1,328 @@
+import { sql } from 'drizzle-orm'
+import { getDb, monitors } from '../db'
+import type { Monitor } from '../db/schema'
+import type { Env } from '../index'
+import { getOrComputeAggregate } from './response-cache'
+
+interface RollupRow {
+  monitorId: string
+  day: number
+  checks: number
+  upCount: number
+  downCount: number
+  responseCount: number
+  responseSumMs: number
+  responseMinMs: number | null
+  responseMaxMs: number | null
+}
+
+export interface DailyUptime {
+  date: string
+  uptime: number | null
+}
+
+export interface MonitorAnalytics {
+  monitorId: string
+  uptimes: Record<'1' | '7' | '30' | '90', number | null>
+  daily: DailyUptime[]
+  count: number
+  up: number
+  down: number
+  avgResponseMs: number | null
+}
+
+export interface HistoryResult {
+  analytics: Record<string, MonitorAnalytics>
+  cacheStatus: 'HIT' | 'MISS' | 'BYPASS'
+}
+
+const EMPTY_CACHE_STATUS = 'BYPASS' as const
+const FROZEN_HISTORY_TTL_SECONDS = 24 * 60 * 60
+
+function utcDay(timestamp: number): number {
+  return timestamp - (timestamp % 86400)
+}
+
+function toNumber(value: unknown): number {
+  return typeof value === 'number' ? value : Number(value ?? 0)
+}
+
+function normalizeRow(row: Record<string, unknown>): RollupRow {
+  return {
+    monitorId: String(row.monitorId),
+    day: toNumber(row.day),
+    checks: toNumber(row.checks),
+    upCount: toNumber(row.upCount),
+    downCount: toNumber(row.downCount),
+    responseCount: toNumber(row.responseCount),
+    responseSumMs: toNumber(row.responseSumMs),
+    responseMinMs: row.responseMinMs === null ? null : toNumber(row.responseMinMs),
+    responseMaxMs: row.responseMaxMs === null ? null : toNumber(row.responseMaxMs),
+  }
+}
+
+function mergeRow(target: Map<string, Map<number, RollupRow>>, row: RollupRow): void {
+  let byDay = target.get(row.monitorId)
+  if (!byDay) {
+    byDay = new Map()
+    target.set(row.monitorId, byDay)
+  }
+  const current = byDay.get(row.day)
+  if (!current) {
+    byDay.set(row.day, { ...row })
+    return
+  }
+  current.checks += row.checks
+  current.upCount += row.upCount
+  current.downCount += row.downCount
+  current.responseCount += row.responseCount
+  current.responseSumMs += row.responseSumMs
+  if (row.responseMinMs !== null) {
+    current.responseMinMs = current.responseMinMs === null
+      ? row.responseMinMs
+      : Math.min(current.responseMinMs, row.responseMinMs)
+  }
+  if (row.responseMaxMs !== null) {
+    current.responseMaxMs = current.responseMaxMs === null
+      ? row.responseMaxMs
+      : Math.max(current.responseMaxMs, row.responseMaxMs)
+  }
+}
+
+async function queryRollups(
+  env: Env,
+  monitorIds: string[],
+  fromDay: number,
+  toDayExclusive: number,
+): Promise<RollupRow[]> {
+  if (monitorIds.length === 0 || fromDay >= toDayExclusive) return []
+  const result = await env.DB.prepare(`
+    SELECT
+      monitor_id AS monitorId,
+      day,
+      checks,
+      up_count AS upCount,
+      down_count AS downCount,
+      response_count AS responseCount,
+      response_sum_ms AS responseSumMs,
+      response_min_ms AS responseMinMs,
+      response_max_ms AS responseMaxMs
+    FROM monitor_daily_rollups
+    WHERE monitor_id IN (SELECT value FROM json_each(?))
+      AND day >= ?
+      AND day < ?
+    ORDER BY monitor_id, day
+  `).bind(JSON.stringify(monitorIds), fromDay, toDayExclusive).all<Record<string, unknown>>()
+  return result.results.map(normalizeRow)
+}
+
+async function historyCacheKey(monitorsForKey: Monitor[], fromDay: number, toDay: number): Promise<string> {
+  const input = JSON.stringify({
+    fromDay,
+    toDay,
+    monitors: monitorsForKey
+      .map((monitor) => [monitor.id, monitor.historyRevision])
+      .sort(([left], [right]) => String(left).localeCompare(String(right))),
+  })
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function percent(up: number, total: number, precision = 2): number | null {
+  if (total === 0) return null
+  const factor = 10 ** precision
+  return Math.round((up / total) * 100 * factor) / factor
+}
+
+interface DayLabel {
+  day: number
+  date: string
+}
+
+function emptyAggregate(monitorId: string, day: number): RollupRow {
+  return {
+    monitorId,
+    day,
+    checks: 0,
+    upCount: 0,
+    downCount: 0,
+    responseCount: 0,
+    responseSumMs: 0,
+    responseMinMs: null,
+    responseMaxMs: null,
+  }
+}
+
+function addAggregate(target: RollupRow, row: RollupRow): void {
+  target.checks += row.checks
+  target.upCount += row.upCount
+  target.downCount += row.downCount
+  target.responseCount += row.responseCount
+  target.responseSumMs += row.responseSumMs
+}
+
+function buildMonitorAnalytics(
+  monitorId: string,
+  rows: Map<number, RollupRow> | undefined,
+  today: number,
+  days: number,
+  dayLabels: DayLabel[],
+): MonitorAnalytics {
+  const start1 = today
+  const start7 = today - 6 * 86400
+  const start30 = today - 29 * 86400
+  const start90 = today - 89 * 86400
+  const requestedStart = today - (days - 1) * 86400
+  const a1 = emptyAggregate(monitorId, start1)
+  const a7 = emptyAggregate(monitorId, start7)
+  const a30 = emptyAggregate(monitorId, start30)
+  const a90 = emptyAggregate(monitorId, start90)
+  const requested = emptyAggregate(monitorId, requestedStart)
+
+  if (rows) {
+    for (const [day, row] of rows) {
+      if (day > today) continue
+      if (day >= requestedStart) addAggregate(requested, row)
+      if (day >= start90) addAggregate(a90, row)
+      if (day >= start30) addAggregate(a30, row)
+      if (day >= start7) addAggregate(a7, row)
+      if (day >= start1) addAggregate(a1, row)
+    }
+  }
+
+  const daily: DailyUptime[] = dayLabels.map(({ day, date }) => {
+    const row = rows?.get(day)
+    return {
+      date,
+      uptime: row ? percent(row.upCount, row.checks, 1) : null,
+    }
+  })
+
+  return {
+    monitorId,
+    uptimes: {
+      '1': percent(a1.upCount, a1.checks),
+      '7': percent(a7.upCount, a7.checks),
+      '30': percent(a30.upCount, a30.checks),
+      '90': percent(a90.upCount, a90.checks),
+    },
+    daily,
+    count: requested.checks,
+    up: requested.upCount,
+    down: requested.downCount,
+    avgResponseMs: requested.responseCount > 0
+      ? Math.round(requested.responseSumMs / requested.responseCount)
+      : null,
+  }
+}
+
+/**
+ * Reads compact exact daily history. The current monitor counters are always
+ * read live. Frozen history caching is added by the response-cache adapter at
+ * the query boundary; this function deliberately never caches current state.
+ */
+export async function getMonitorAnalytics(
+  env: Env,
+  monitorIds: string[],
+  days = 90,
+  now = Math.floor(Date.now() / 1000),
+  requestUrl?: string,
+  preloadedMonitors?: Monitor[],
+  reserveFrozenReadRows?: (estimatedRows: number) => Promise<void>,
+): Promise<HistoryResult> {
+  const uniqueIds = [...new Set(monitorIds)]
+  if (uniqueIds.length === 0) return { analytics: {}, cacheStatus: EMPTY_CACHE_STATUS }
+
+  const requestedIds = new Set(uniqueIds)
+  const monitorRows: Monitor[] = preloadedMonitors
+    ? preloadedMonitors.filter((monitor) => requestedIds.has(monitor.id))
+    : await getDb(env.DB).select()
+      .from(monitors)
+      .where(sql`${monitors.id} IN (SELECT value FROM json_each(${JSON.stringify(uniqueIds)}))`)
+  const monitorOrder = new Map(uniqueIds.map((id, index) => [id, index]))
+  monitorRows.sort((left, right) =>
+    (monitorOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER)
+    - (monitorOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER))
+  const foundIds = monitorRows.map((monitor) => monitor.id)
+  if (foundIds.length === 0) return { analytics: {}, cacheStatus: EMPTY_CACHE_STATUS }
+
+  const today = utcDay(now)
+  const maxDays = Math.max(days, 90)
+  const fromDay = today - (maxDays - 1) * 86400
+  const yesterday = today - 86400
+  const frozenEnd = Math.max(fromDay, yesterday)
+  let frozenRows: RollupRow[] = []
+  let cacheStatus: HistoryResult['cacheStatus'] = EMPTY_CACHE_STATUS
+
+  if (fromDay < frozenEnd) {
+    const key = await historyCacheKey(monitorRows, fromDay, frozenEnd)
+    const cached = await getOrComputeAggregate({
+      namespace: 'daily-rollups',
+      key,
+      revision: 'v1',
+      ttlSeconds: FROZEN_HISTORY_TTL_SECONDS,
+      baseUrl: requestUrl ? new URL(requestUrl).origin : undefined,
+    }, async () => {
+      const frozenDays = Math.ceil((frozenEnd - fromDay) / 86400)
+      await reserveFrozenReadRows?.(foundIds.length * frozenDays + 10)
+      return queryRollups(env, foundIds, fromDay, frozenEnd)
+    })
+    frozenRows = cached.value
+    cacheStatus = cached.status
+  }
+
+  // Yesterday, today, and the monitor's current counters are deliberately live.
+  // This makes current state fresh even when a Worker cache entry survives in a
+  // different data center.
+  const liveRows = await queryRollups(env, foundIds, frozenEnd, today + 86400)
+  const rows = [...frozenRows, ...liveRows]
+  const byMonitor = new Map<string, Map<number, RollupRow>>()
+
+  for (const row of rows) mergeRow(byMonitor, row)
+
+  for (const monitor of monitorRows) {
+    mergeCurrentCounters(byMonitor, monitor, fromDay, today)
+  }
+
+  const dayLabels: DayLabel[] = []
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    const day = today - offset * 86400
+    dayLabels.push({
+      day,
+      date: new Date(day * 1000).toISOString().slice(0, 10),
+    })
+  }
+  const analytics: Record<string, MonitorAnalytics> = {}
+  for (const id of foundIds) {
+    analytics[id] = buildMonitorAnalytics(
+      id,
+      byMonitor.get(id),
+      today,
+      days,
+      dayLabels,
+    )
+  }
+
+  return { analytics, cacheStatus }
+}
+
+function mergeCurrentCounters(
+  target: Map<string, Map<number, RollupRow>>,
+  monitor: Monitor,
+  fromDay: number,
+  today: number,
+): void {
+  if (monitor.statsDay === null || monitor.dayChecks === 0) return
+  if (monitor.statsDay < fromDay || monitor.statsDay > today) return
+  mergeRow(target, {
+    monitorId: monitor.id,
+    day: monitor.statsDay,
+    checks: monitor.dayChecks,
+    upCount: monitor.dayUpCount,
+    downCount: monitor.dayDownCount,
+    responseCount: monitor.dayResponseCount,
+    responseSumMs: monitor.dayResponseSumMs,
+    responseMinMs: monitor.dayResponseMinMs,
+    responseMaxMs: monitor.dayResponseMaxMs,
+  })
+}

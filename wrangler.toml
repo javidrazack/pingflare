@@ -1,19 +1,20 @@
 name = "pingflare"
 main = "src/index.ts"
-compatibility_date = "2026-07-23"
+compatibility_date = "2026-07-27"
 compatibility_flags = ["nodejs_compat"]
 keep_vars = true
+
+[vars]
+PINGFLARE_INSTANCE_ID = "pingflare"
+API_ANALYTICS_SAMPLE_RATE = "0.05"
 
 [secrets]
 required = ["ADMIN_USER", "ADMIN_PASS", "JWT_SECRET", "ENCRYPTION_KEY"]
 
-[build]
-command = "npm run build"
-
 [assets]
-binding = "ASSETS"
 directory = "./frontend/build"
-run_worker_first = true
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/h/*"]
 
 [[d1_databases]]
 binding = "DB"
@@ -21,12 +22,28 @@ database_name = "pingflare"
 database_id = "57c162e7-edab-4cb0-9420-14cc6d630015"
 migrations_dir = "drizzle"
 
+[[analytics_engine_datasets]]
+binding = "CHECK_ANALYTICS"
+dataset = "pingflare_check_events_v1"
+
+[[analytics_engine_datasets]]
+binding = "API_ANALYTICS"
+dataset = "pingflare_api_events_v1"
+
 [[ratelimits]]
 name = "LOGIN_RATE_LIMITER"
 namespace_id = "104142"
 
 [ratelimits.simple]
 limit = 5
+period = 60
+
+[[ratelimits]]
+name = "PUBLIC_STATUS_RATE_LIMITER"
+namespace_id = "104143"
+
+[ratelimits.simple]
+limit = 4
 period = 60
 
 [triggers]

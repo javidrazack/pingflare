@@ -6,6 +6,7 @@ export async function sendPushover(
   config: Record<string, string>,
   payload: NotificationPayload,
   locale: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const priority = payload.status === 'down' ? '1' : '0'
 
@@ -19,6 +20,7 @@ export async function sendPushover(
       priority,
       title: payload.monitor.name,
     }),
+    signal,
   })
   await assertResponseOk(response, 'Pushover')
 }
