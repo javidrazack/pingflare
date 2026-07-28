@@ -29,7 +29,9 @@ export async function sendNotification(
   channel: NotificationChannel,
   payload: NotificationPayload,
   encryptionKey?: string,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted()
   const config = JSON.parse(channel.config) as Record<string, string>
   if (encryptionKey) {
     for (const field of SENSITIVE_FIELDS[channel.type] ?? []) {
@@ -38,21 +40,22 @@ export async function sendNotification(
       }
     }
   }
+  signal?.throwIfAborted()
   const locale = payload.locale ?? 'en'
   switch (channel.type) {
-    case 'discord':  return sendDiscord(config, payload, locale)
-    case 'slack':    return sendSlack(config, payload, locale)
-    case 'telegram': return sendTelegram(config, payload, locale)
-    case 'email':    return sendEmail(config, payload, locale)
-    case 'ntfy':     return sendNtfy(config, payload, locale)
-    case 'pushover': return sendPushover(config, payload, locale)
-    case 'webhook':     return sendWebhook(config, payload)
-    case 'apprise':     return sendApprise(config, payload, locale)
-    case 'googlechat':  return sendGoogleChat(config, payload, locale)
-    case 'msteams':     return sendMSTeams(config, payload, locale)
-    case 'pagerduty':   return sendPagerDuty(config, payload, locale)
-    case 'matrix':      return sendMatrix(config, payload, locale)
-    case 'twilio':      return sendTwilio(config, payload, locale)
+    case 'discord':  return sendDiscord(config, payload, locale, signal)
+    case 'slack':    return sendSlack(config, payload, locale, signal)
+    case 'telegram': return sendTelegram(config, payload, locale, signal)
+    case 'email':    return sendEmail(config, payload, locale, signal)
+    case 'ntfy':     return sendNtfy(config, payload, locale, signal)
+    case 'pushover': return sendPushover(config, payload, locale, signal)
+    case 'webhook':     return sendWebhook(config, payload, signal)
+    case 'apprise':     return sendApprise(config, payload, locale, signal)
+    case 'googlechat':  return sendGoogleChat(config, payload, locale, signal)
+    case 'msteams':     return sendMSTeams(config, payload, locale, signal)
+    case 'pagerduty':   return sendPagerDuty(config, payload, locale, signal)
+    case 'matrix':      return sendMatrix(config, payload, locale, signal)
+    case 'twilio':      return sendTwilio(config, payload, locale, signal)
     default: throw new Error(`Unsupported notification channel type: ${String(channel.type)}`)
   }
 }

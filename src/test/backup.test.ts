@@ -226,4 +226,43 @@ describe('POST /api/backup/restore', () => {
     expect(batchSpy.mock.calls[0][0]).toHaveLength(13)
     expect(await db.select().from(monitors)).toHaveLength(30)
   })
+
+  it('rejects a restore before an oversized history cascade mutates data', async () => {
+    const { db, d1 } = ctx
+    const monitorId = await insertMonitor(db, { name: 'Retained monitor' })
+    await d1.prepare(`
+      WITH
+      digit(value) AS (
+        VALUES (0), (1), (2), (3), (4), (5), (6), (7), (8), (9)
+      ),
+      sequence(value) AS (
+        SELECT
+          1 + one.value + 10 * ten.value + 100 * hundred.value
+          + 1000 * thousand.value + 10000 * ten_thousand.value
+        FROM digit AS one
+        CROSS JOIN digit AS ten
+        CROSS JOIN digit AS hundred
+        CROSS JOIN digit AS thousand
+        CROSS JOIN digit AS ten_thousand
+        ORDER BY 1
+        LIMIT 10001
+      )
+      INSERT INTO status_logs (id, monitor_id, status, checked_at, source)
+      SELECT 'restore-budget-' || value, ?, 'up', value, 'cron'
+      FROM sequence
+    `).bind(monitorId).run()
+
+    const { app, env } = buildApp(d1)
+    const backup = await (await doGet(app, env, auth)).json()
+    const restore = await doRestore(app, env, auth, backup)
+
+    expect(restore.status).toBe(409)
+    expect(await restore.json()).toMatchObject({
+      code: 'D1_DESTRUCTIVE_WRITE_BUDGET_EXCEEDED',
+    })
+    expect(await db.select().from(monitors)).toHaveLength(1)
+    expect((await d1.prepare(
+      'SELECT COUNT(*) AS count FROM status_logs WHERE monitor_id = ?',
+    ).bind(monitorId).first<{ count: number }>())?.count).toBe(10001)
+  })
 })

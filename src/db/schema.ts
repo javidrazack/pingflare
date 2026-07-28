@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, primaryKey, index } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, primaryKey, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 
 export const monitors = sqliteTable('monitors', {
@@ -9,6 +9,8 @@ export const monitors = sqliteTable('monitors', {
   interval: integer('interval').notNull().default(60),
   active: integer('active', { mode: 'boolean' }).notNull().default(true),
   lastCheckedAt: integer('last_checked_at'),
+  nextCheckAt: integer('next_check_at').notNull().default(0),
+  observationRevision: text('observation_revision').notNull().default(''),
   lastStatus: text('last_status').notNull().default('pending').$type<'up' | 'down' | 'pending'>(),
   reminderIntervalHours: integer('reminder_interval_hours'),
   toleranceFailures: integer('tolerance_failures').notNull().default(1),
@@ -57,6 +59,7 @@ export const monitors = sqliteTable('monitors', {
   index('idx_monitors_status').on(t.lastStatus),
   index('idx_monitors_type').on(t.type),
   index('idx_monitors_updated').on(t.updatedAt),
+  index('idx_monitors_active_next_check').on(t.active, t.nextCheckAt),
 ])
 
 export const statusLogs = sqliteTable('status_logs', {
@@ -97,6 +100,12 @@ export const schedulerLeases = sqliteTable('scheduler_leases', {
   updatedAt: integer('updated_at').notNull(),
 })
 
+export const quotaBudgets = sqliteTable('quota_budgets', {
+  key: text('key').primaryKey(),
+  day: integer('day').notNull(),
+  used: integer('used').notNull().default(0),
+})
+
 export const incidents = sqliteTable('incidents', {
   id: text('id').primaryKey(),
   monitorId: text('monitor_id').notNull().references(() => monitors.id, { onDelete: 'cascade' }),
@@ -104,8 +113,10 @@ export const incidents = sqliteTable('incidents', {
   resolvedAt: integer('resolved_at'),
   durationSeconds: integer('duration_seconds'),
 }, (t) => [
-  index('idx_incidents_monitor_started').on(t.monitorId, t.startedAt),
-  index('idx_incidents_monitor_resolved').on(t.monitorId, t.resolvedAt),
+  uniqueIndex('idx_incidents_one_open')
+    .on(t.monitorId)
+    .where(sql`${t.resolvedAt} IS NULL`),
+  index('idx_incidents_monitor_started_id').on(t.monitorId, t.startedAt, t.id),
 ])
 
 export const notificationChannels = sqliteTable('notification_channels', {
@@ -127,6 +138,27 @@ export const notificationTestRuns = sqliteTable('notification_test_runs', {
   createdAt: integer('created_at').notNull().default(sql`(unixepoch())`),
 }, (t) => [
   index('idx_notification_tests_channel_created').on(t.channelId, t.createdAt),
+])
+
+export const notificationDeliveries = sqliteTable('notification_deliveries', {
+  id: text('id').primaryKey(),
+  dedupeKey: text('dedupe_key').notNull().unique(),
+  monitorId: text('monitor_id').notNull().references(() => monitors.id, { onDelete: 'cascade' }),
+  eventType: text('event_type').notNull().$type<'alert' | 'recovery' | 'reminder'>(),
+  payload: text('payload').notNull(),
+  remainingChannelIds: text('remaining_channel_ids').notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  deliveredCount: integer('delivered_count').notNull().default(0),
+  stateApplied: integer('state_applied', { mode: 'boolean' }).notNull().default(false),
+  nextAttemptAt: integer('next_attempt_at').notNull(),
+  claimToken: text('claim_token'),
+  claimUntil: integer('claim_until'),
+  lastError: text('last_error'),
+  createdAt: integer('created_at').notNull().default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at').notNull().default(sql`(unixepoch())`),
+}, (t) => [
+  index('idx_notification_deliveries_due').on(t.nextAttemptAt, t.claimUntil),
+  index('idx_notification_deliveries_monitor').on(t.monitorId, t.createdAt),
 ])
 
 export const monitorNotifications = sqliteTable('monitor_notifications', {
@@ -197,7 +229,8 @@ export const incidentUpdates = sqliteTable('incident_updates', {
   status: text('status').notNull().$type<'investigating' | 'identified' | 'monitoring' | 'resolved'>(),
   createdAt: integer('created_at').notNull().default(sql`(unixepoch())`),
 }, (t) => [
-  index('idx_incident_updates_incident_created').on(t.incidentId, t.createdAt),
+  index('idx_incident_updates_incident_created_id')
+    .on(t.incidentId, t.createdAt, t.id),
 ])
 
 export const incidentMonitors = sqliteTable('incident_monitors', {
@@ -207,6 +240,11 @@ export const incidentMonitors = sqliteTable('incident_monitors', {
   primaryKey({ columns: [t.incidentId, t.monitorId] }),
   index('idx_incident_monitors_monitor').on(t.monitorId, t.incidentId),
 ])
+
+export const incidentFeedMonitorCounts = sqliteTable('incident_feed_monitor_counts', {
+  monitorId: text('monitor_id').primaryKey().references(() => monitors.id, { onDelete: 'cascade' }),
+  linkCount: integer('link_count').notNull().default(0),
+})
 
 export const incidentReportEvents = sqliteTable('incident_report_events', {
   incidentId: text('incident_id').notNull().references(() => incidentReports.id, { onDelete: 'cascade' }),
@@ -223,6 +261,7 @@ export type MonitorDailyRollup = typeof monitorDailyRollups.$inferSelect
 export type Incident = typeof incidents.$inferSelect
 export type NotificationChannel = typeof notificationChannels.$inferSelect
 export type NotificationTestRun = typeof notificationTestRuns.$inferSelect
+export type NotificationDelivery = typeof notificationDeliveries.$inferSelect
 export type AlertState = typeof alertState.$inferSelect
 export type StatusPage = typeof statusPages.$inferSelect
 export const maintenanceWindows = sqliteTable('maintenance_windows', {

@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { eq, desc, inArray, isNull } from 'drizzle-orm'
 import {
   getDb,
@@ -10,10 +10,54 @@ import {
   monitors,
 } from '../db'
 import { requireAuth } from '../middleware/auth'
+import { readJsonBodyWithLimit, RequestBodyTooLargeError } from '../request'
 import type { Env } from '../index'
 
 const router = new Hono<{ Bindings: Env }>()
 router.use('*', requireAuth)
+const MAX_INCIDENT_BODY_BYTES = 128 * 1024
+const MAX_MONITOR_ASSOCIATIONS = 1000
+const MAX_EVENT_ASSOCIATIONS = 100
+
+async function readIncidentBody(c: Context<{ Bindings: Env }>) {
+  try {
+    const body = await readJsonBodyWithLimit(c.req.raw, MAX_INCIDENT_BODY_BYTES)
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new SyntaxError()
+    return body as Record<string, any>
+  } catch (error) {
+    const status = error instanceof RequestBodyTooLargeError ? 413 : 400
+    return c.json({ error: status === 413 ? 'Request is too large' : 'Invalid JSON body' }, status)
+  }
+}
+
+function associationIds(
+  value: unknown,
+  maxIds: number,
+): string[] | null | 'invalid' {
+  if (value === undefined) return null
+  if (
+    !Array.isArray(value)
+    || value.length > maxIds
+    || value.some((id) => typeof id !== 'string' || id.length === 0)
+  ) return 'invalid'
+  return [...new Set(value)]
+}
+
+function associationInsert(
+  env: Env,
+  table: 'incident_monitors' | 'incident_report_events',
+  targetColumn: 'monitor_id' | 'event_id',
+  incidentId: string,
+  ids: string[],
+): D1PreparedStatement {
+  return env.DB.prepare(`
+    INSERT INTO ${table} (incident_id, ${targetColumn})
+    SELECT ?, value
+    FROM json_each(?)
+    WHERE true
+    ON CONFLICT (incident_id, ${targetColumn}) DO NOTHING
+  `).bind(incidentId, JSON.stringify(ids))
+}
 
 router.get('/', async (c) => {
   const db = getDb(c.env.DB)
@@ -55,44 +99,62 @@ router.get('/detected', async (c) => {
 
 router.post('/', async (c) => {
   const db = getDb(c.env.DB)
-  const body = await c.req.json()
+  const body = await readIncidentBody(c)
+  if (body instanceof Response) return body
+  const monitorIds = associationIds(body.monitorIds, MAX_MONITOR_ASSOCIATIONS)
+  const eventIds = associationIds(body.eventIds, MAX_EVENT_ASSOCIATIONS)
+  if (monitorIds === 'invalid' || eventIds === 'invalid') {
+    return c.json({
+      error: 'Select at most 1000 monitors and 100 detected events',
+    }, 400)
+  }
   const id = crypto.randomUUID()
   const now = Math.floor(Date.now() / 1000)
-
-  await db.insert(incidentReports).values({
-    id,
-    title: body.title,
-    status: body.status ?? 'investigating',
-    visibility: body.visibility === 'draft' ? 'draft' : 'published',
-    impact: ['minor', 'major', 'critical'].includes(body.impact) ? body.impact : 'minor',
-    publishedAt: body.visibility === 'draft' ? null : now,
-    startedAt: now,
-    resolvedAt: body.status === 'resolved' ? now : null,
-  })
+  const status = body.status ?? 'investigating'
+  const visibility = body.visibility === 'draft' ? 'draft' : 'published'
+  const impact = ['minor', 'major', 'critical'].includes(body.impact) ? body.impact : 'minor'
+  const statements: D1PreparedStatement[] = [
+    c.env.DB.prepare(`
+      INSERT INTO incident_reports (
+        id, title, status, visibility, impact, published_at, started_at, resolved_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      id,
+      body.title,
+      status,
+      visibility,
+      impact,
+      visibility === 'draft' ? null : now,
+      now,
+      status === 'resolved' ? now : null,
+    ),
+  ]
 
   if (body.message) {
-    await db.insert(incidentUpdates).values({
-      id: crypto.randomUUID(),
-      incidentId: id,
-      message: body.message,
-      status: body.status ?? 'investigating',
-    })
+    statements.push(c.env.DB.prepare(`
+      INSERT INTO incident_updates (id, incident_id, message, status)
+      VALUES (?, ?, ?, ?)
+    `).bind(crypto.randomUUID(), id, body.message, status))
   }
-
-  if (Array.isArray(body.monitorIds)) {
-    for (const monitorId of body.monitorIds) {
-      await db.insert(incidentMonitors).values({ incidentId: id, monitorId })
-    }
+  if (monitorIds && monitorIds.length > 0) {
+    statements.push(associationInsert(
+      c.env,
+      'incident_monitors',
+      'monitor_id',
+      id,
+      monitorIds,
+    ))
   }
-
-  if (Array.isArray(body.eventIds)) {
-    const eventIds = [...new Set<string>(
-      (body.eventIds as unknown[]).filter((value): value is string => typeof value === 'string'),
-    )].slice(0, 100)
-    for (const eventId of eventIds) {
-      await db.insert(incidentReportEvents).values({ incidentId: id, eventId }).onConflictDoNothing()
-    }
+  if (eventIds && eventIds.length > 0) {
+    statements.push(associationInsert(
+      c.env,
+      'incident_report_events',
+      'event_id',
+      id,
+      eventIds,
+    ))
   }
+  await c.env.DB.batch(statements)
 
   const created = await db.query.incidentReports.findFirst({ where: eq(incidentReports.id, id) })
   return c.json(created, 201)
@@ -113,7 +175,15 @@ router.get('/:id', async (c) => {
 router.put('/:id', async (c) => {
   const db = getDb(c.env.DB)
   const id = c.req.param('id')
-  const body = await c.req.json()
+  const body = await readIncidentBody(c)
+  if (body instanceof Response) return body
+  const monitorIds = associationIds(body.monitorIds, MAX_MONITOR_ASSOCIATIONS)
+  const eventIds = associationIds(body.eventIds, MAX_EVENT_ASSOCIATIONS)
+  if (monitorIds === 'invalid' || eventIds === 'invalid') {
+    return c.json({
+      error: 'Select at most 1000 monitors and 100 detected events',
+    }, 400)
+  }
   const now = Math.floor(Date.now() / 1000)
   const existing = await db.query.incidentReports.findFirst({ where: eq(incidentReports.id, id) })
   if (!existing) return c.json({ error: 'Not found' }, 404)
@@ -135,21 +205,38 @@ router.put('/:id', async (c) => {
     resolvedAt,
   }).where(eq(incidentReports.id, id))
 
-  if (Array.isArray(body.monitorIds)) {
-    await db.delete(incidentMonitors).where(eq(incidentMonitors.incidentId, id))
-    for (const monitorId of body.monitorIds) {
-      await db.insert(incidentMonitors).values({ incidentId: id, monitorId })
+  const associationStatements: D1PreparedStatement[] = []
+  if (monitorIds) {
+    associationStatements.push(
+      c.env.DB.prepare('DELETE FROM incident_monitors WHERE incident_id = ?').bind(id),
+    )
+    if (monitorIds.length > 0) {
+      associationStatements.push(associationInsert(
+        c.env,
+        'incident_monitors',
+        'monitor_id',
+        id,
+        monitorIds,
+      ))
     }
   }
 
-  if (Array.isArray(body.eventIds)) {
-    await db.delete(incidentReportEvents).where(eq(incidentReportEvents.incidentId, id))
-    const eventIds = [...new Set<string>(
-      (body.eventIds as unknown[]).filter((value): value is string => typeof value === 'string'),
-    )].slice(0, 100)
-    for (const eventId of eventIds) {
-      await db.insert(incidentReportEvents).values({ incidentId: id, eventId }).onConflictDoNothing()
+  if (eventIds) {
+    associationStatements.push(
+      c.env.DB.prepare('DELETE FROM incident_report_events WHERE incident_id = ?').bind(id),
+    )
+    if (eventIds.length > 0) {
+      associationStatements.push(associationInsert(
+        c.env,
+        'incident_report_events',
+        'event_id',
+        id,
+        eventIds,
+      ))
     }
+  }
+  if (associationStatements.length > 0) {
+    await c.env.DB.batch(associationStatements)
   }
 
   const updated = await db.query.incidentReports.findFirst({ where: eq(incidentReports.id, id) })

@@ -56,11 +56,11 @@ Analytics Engine may sample data, so aggregate counts and sums must be weighted 
 
 ## API event schema
 
-Successful API requests are sampled at `API_ANALYTICS_SAMPLE_RATE`, which defaults to `0.05`. Responses with status 400 or above are always recorded.
+Successful API requests are sampled at `API_ANALYTICS_SAMPLE_RATE`, which defaults to `0.05`. Responses with status 400 or above are always recorded. Each point stores the inverse of its application-level inclusion probability so sampled successes and fully retained errors can be combined without bias.
 
 | Column | Meaning |
 |---|---|
-| `blob1` | Schema: `api.v1` |
+| `blob1` | Schema: `api.v2` |
 | `blob2` | Pingflare instance ID |
 | `blob3` | Matched route pattern, not the raw URL |
 | `blob4` | HTTP method |
@@ -70,6 +70,31 @@ Successful API requests are sampled at `API_ANALYTICS_SAMPLE_RATE`, which defaul
 | `double3` | HTTP status code |
 | `double4` | Error flag |
 | `double5` | Event timestamp in milliseconds |
+| `double6` | Application sampling weight: `1 / API_ANALYTICS_SAMPLE_RATE` for successes, `1` for errors |
+
+Analytics Engine can also adaptively sample stored points. API queries must therefore multiply the application sampling weight (`double6`) by Analytics Engine's `_sample_interval`. A raw `COUNT()` or a query weighted by only one of those columns produces biased request and error rates.
+
+Example weighted request, error-rate, and duration query:
+
+```sql
+SELECT
+  blob3 AS operation,
+  SUM(_sample_interval * double6) AS estimated_requests,
+  SUM(_sample_interval * double6 * double4) AS estimated_errors,
+  SUM(_sample_interval * double6 * double4)
+    / NULLIF(SUM(_sample_interval * double6), 0) * 100 AS error_percent,
+  SUM(_sample_interval * double6 * double1)
+    / NULLIF(SUM(_sample_interval * double6 * double2), 0) AS avg_duration_ms
+FROM pingflare_api_events_v1
+WHERE blob1 = 'api.v2'
+  AND timestamp >= NOW() - INTERVAL '24' HOUR
+GROUP BY blob3
+ORDER BY operation
+```
+
+Set `API_ANALYTICS_SAMPLE_RATE` above zero when estimating total request volume or error rate. At `0`, Pingflare intentionally records only errors, so success volume cannot be reconstructed.
+
+Legacy `api.v1` points do not contain `double6`. Query them separately with the sampling rate that was active when they were written; do not mix them into the weighted `api.v2` query above.
 
 ## Querying
 

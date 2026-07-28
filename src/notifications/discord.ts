@@ -6,6 +6,7 @@ export async function sendDiscord(
   config: Record<string, string>,
   payload: NotificationPayload,
   locale: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const color = payload.status === 'up' ? 0x22c55e : 0xef4444
   const icon = payload.status === 'up' ? '✅' : '🔴'
@@ -23,6 +24,7 @@ export async function sendDiscord(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ embeds: [embed] }),
+    signal,
   })
   await assertResponseOk(response, 'Discord')
 }

@@ -34,6 +34,9 @@
   let hbToken: string | null = null
   let checkCount = 0
   let loading = true
+  let currentError = ''
+  let analyticsError = ''
+  let actionError = ''
   let error = ''
   let currentTicker: ReturnType<typeof setTimeout>
   let analyticsTicker: ReturnType<typeof setTimeout>
@@ -75,9 +78,9 @@
         const tok = await api.monitors.hbToken(id)
         hbToken = tok.token
       }
-      error = ''
+      currentError = ''
     } catch (e) {
-      error = String(e)
+      currentError = String(e)
     } finally {
       currentInFlight = false
     }
@@ -95,8 +98,9 @@
       uptime90 = analytics.uptimes['90']
       checkCount = analytics.count
       avgResponseTime = analytics.avgResponseMs
+      analyticsError = ''
     } catch (e) {
-      error = String(e)
+      analyticsError = String(e)
     } finally {
       analyticsInFlight = false
     }
@@ -134,9 +138,16 @@
 
   async function runChecks() {
     running = true
+    actionError = ''
     try {
-      await api.cron.run()
+      const result = await api.cron.run()
+      if (result.skippedBecauseLeased) {
+        actionError = $t('dashboard.checksAlreadyRunning')
+        return
+      }
       await Promise.all([loadCurrent(), loadAnalytics()])
+    } catch (e) {
+      actionError = String(e)
     } finally {
       running = false
     }
@@ -148,7 +159,7 @@
       await api.monitors.resetStats(id)
       await Promise.all([loadCurrent(), loadAnalytics()])
     } catch (e) {
-      error = String(e)
+      actionError = String(e)
     }
   }
 
@@ -159,7 +170,7 @@
       await api.monitors.delete(id)
       goto('/monitors')
     } catch (e) {
-      error = String(e)
+      actionError = String(e)
     }
   }
 
@@ -171,7 +182,7 @@
     try {
       monitor = await api.monitors.toggleActive(id, next)
     } catch (e) {
-      error = String(e)
+      actionError = String(e)
     }
   }
 
@@ -211,6 +222,7 @@
   })
 
   $: openIncidents = incidents.filter(i => !i.resolvedAt).length
+  $: error = actionError || currentError || analyticsError
   $: tags = monitor ? parseTags(monitor.tags) : []
 
   $: headerCount = (() => { try { return Object.keys(JSON.parse(monitor?.headers ?? '{}')).length } catch { return 0 } })()
@@ -340,7 +352,7 @@
         <div class="text-2xl font-bold tracking-tight tabular-nums text-green-500">{formatUptime(uptime30)}</div>
       </div>
       <div class="stat-card">
-        <div class="text-xs mb-2" style="color: rgb(var(--text-muted))">{$t('monitor.avgResponse')}</div>
+        <div class="text-xs mb-2" style="color: rgb(var(--text-muted))">{$t('monitor.avgResponse90d')}</div>
         <div class="text-2xl font-bold tracking-tight tabular-nums" style="color: rgb(var(--text))">
           {avgResponseTime != null ? `${avgResponseTime}ms` : '-'}
         </div>
@@ -355,7 +367,7 @@
         <div class="text-base font-semibold" style="color: rgb(var(--text))">{formatRelative(monitor.lastCheckedAt, $locale)}</div>
       </div>
       <div class="stat-card">
-        <div class="text-xs mb-2" style="color: rgb(var(--text-muted))">{$t('monitor.totalChecks')}</div>
+        <div class="text-xs mb-2" style="color: rgb(var(--text-muted))">{$t('monitor.checks90d')}</div>
         <div class="text-2xl font-bold tracking-tight tabular-nums" style="color: rgb(var(--text))">{checkCount.toLocaleString()}</div>
       </div>
     </div>

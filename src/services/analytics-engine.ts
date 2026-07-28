@@ -1,5 +1,5 @@
 const CHECK_SCHEMA = 'check.v1';
-const API_SCHEMA = 'api.v1';
+const API_SCHEMA = 'api.v2';
 const DEFAULT_API_SAMPLE_RATE = 0.05;
 
 export interface AnalyticsEngineEnv {
@@ -191,11 +191,14 @@ export function recordApiRequest(
       analyticsEnv.API_ANALYTICS_SAMPLE_RATE,
     );
 
-    if (!isError && Math.random() >= sampleRate) {
-      return;
+    if (!isError) {
+      if (sampleRate <= 0 || Math.random() >= sampleRate) {
+        return;
+      }
     }
 
     const duration = finiteNonNegative(metric.durationMs);
+    const applicationSampleWeight = isError ? 1 : 1 / sampleRate;
     dataset.writeDataPoint({
       blobs: [
         API_SCHEMA,
@@ -210,6 +213,7 @@ export function recordApiRequest(
         statusCode,
         isError ? 1 : 0,
         timestamp(metric.timestamp),
+        applicationSampleWeight,
       ],
     });
   } catch {

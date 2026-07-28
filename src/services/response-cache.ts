@@ -36,8 +36,9 @@ const MAX_MEMORY_TOTAL_BYTES = 8 * 1024 * 1024
 const CACHE_PATH_PREFIX = '/__pingflare-cache/v1/'
 const EXPIRY_HEADER = 'x-pingflare-cache-expires-at'
 
+// Module state is limited to serialized data; request-bound I/O promises must
+// never be shared across Worker invocations.
 const memoryCache = new Map<string, MemoryEntry>()
-const inFlight = new Map<string, Promise<AggregateCacheResult<unknown>>>()
 const textEncoder = new TextEncoder()
 let memoryCacheBytes = 0
 
@@ -159,76 +160,63 @@ export async function getOrComputeAggregate<T>(
     return { value: await loader(), status: 'BYPASS' }
   }
 
-  const pending = inFlight.get(cacheUrl)
-  if (pending) return pending as Promise<AggregateCacheResult<T>>
+  const now = Date.now()
+  const ttlMilliseconds = Math.max(1, Math.floor(options.ttlSeconds * 1000))
+  const expiresAt = now + ttlMilliseconds
+  const request = new Request(cacheUrl, { method: 'GET' })
+  const cloudflareCache = options.cache === undefined
+    ? detectCloudflareCache()
+    : options.cache ?? undefined
 
-  const operation = (async (): Promise<AggregateCacheResult<T>> => {
-    const now = Date.now()
-    const ttlMilliseconds = Math.max(1, Math.floor(options.ttlSeconds * 1000))
-    const expiresAt = now + ttlMilliseconds
-    const request = new Request(cacheUrl, { method: 'GET' })
-    const cloudflareCache = options.cache === undefined
-      ? detectCloudflareCache()
-      : options.cache ?? undefined
-
-    if (cloudflareCache) {
-      try {
-        const cached = await readCloudflareEntry<T>(cloudflareCache, request, now)
-        if (cached !== undefined) return { value: cached, status: 'HIT' }
-      } catch {
-        // A Cache API failure must not make aggregate reads fail.
-      }
-    }
-
-    const memoryJson = getMemoryEntry(cacheUrl, now)
-    if (memoryJson !== undefined) {
-      const cached = parseJson<T>(memoryJson)
-      if (cached !== undefined) return { value: cached, status: 'HIT' }
-      deleteMemoryEntry(cacheUrl)
-    }
-
-    const value = await loader()
-    let json: string
+  if (cloudflareCache) {
     try {
-      json = JSON.stringify(value)
+      const cached = await readCloudflareEntry<T>(cloudflareCache, request, now)
+      if (cached !== undefined) return { value: cached, status: 'HIT' }
     } catch {
-      return { value, status: 'BYPASS' }
+      // A Cache API failure must not make aggregate reads fail.
     }
-
-    // JSON.stringify(undefined) returns undefined despite its TypeScript type.
-    if (typeof json !== 'string') return { value, status: 'BYPASS' }
-
-    if (cloudflareCache) {
-      try {
-        await cloudflareCache.put(request, new Response(json, {
-          headers: {
-            'cache-control': `public, max-age=${Math.max(1, Math.ceil(options.ttlSeconds))}`,
-            'content-type': 'application/json; charset=utf-8',
-            [EXPIRY_HEADER]: String(expiresAt),
-          },
-        }))
-        return { value, status: 'MISS' }
-      } catch {
-        // Fall through to the bounded Node/process-local cache.
-      }
-    }
-
-    return setMemoryEntry(cacheUrl, json, expiresAt, now)
-      ? { value, status: 'MISS' }
-      : { value, status: 'BYPASS' }
-  })()
-
-  inFlight.set(cacheUrl, operation as Promise<AggregateCacheResult<unknown>>)
-  try {
-    return await operation
-  } finally {
-    if (inFlight.get(cacheUrl) === operation) inFlight.delete(cacheUrl)
   }
+
+  const memoryJson = getMemoryEntry(cacheUrl, now)
+  if (memoryJson !== undefined) {
+    const cached = parseJson<T>(memoryJson)
+    if (cached !== undefined) return { value: cached, status: 'HIT' }
+    deleteMemoryEntry(cacheUrl)
+  }
+
+  const value = await loader()
+  let json: string
+  try {
+    json = JSON.stringify(value)
+  } catch {
+    return { value, status: 'BYPASS' }
+  }
+
+  // JSON.stringify(undefined) returns undefined despite its TypeScript type.
+  if (typeof json !== 'string') return { value, status: 'BYPASS' }
+
+  if (cloudflareCache) {
+    try {
+      await cloudflareCache.put(request, new Response(json, {
+        headers: {
+          'cache-control': `public, max-age=${Math.max(1, Math.ceil(options.ttlSeconds))}`,
+          'content-type': 'application/json; charset=utf-8',
+          [EXPIRY_HEADER]: String(expiresAt),
+        },
+      }))
+      return { value, status: 'MISS' }
+    } catch {
+      // Fall through to the bounded Node/process-local cache.
+    }
+  }
+
+  return setMemoryEntry(cacheUrl, json, expiresAt, now)
+    ? { value, status: 'MISS' }
+    : { value, status: 'BYPASS' }
 }
 
 /** Clear process-local entries, primarily for local invalidation and tests. */
 export function clearAggregateMemoryCache(): void {
   memoryCache.clear()
-  inFlight.clear()
   memoryCacheBytes = 0
 }

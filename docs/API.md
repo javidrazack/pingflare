@@ -80,6 +80,8 @@ Uptime windows use completed and current UTC calendar days. The one-day value is
 | GET | `/api/public/status/:slug` | Public data for a status page |
 | GET | `/api/public/status/:slug/monitors/:monitorId` | Public monitor detail |
 
+Public status reads return `429 PUBLIC_D1_READ_BUDGET_EXHAUSTED` when the account-wide UTC-day read allocation is spent. A page whose selected monitors have more than 20,000 historical manual-incident links returns `503 PUBLIC_INCIDENT_FEED_HISTORY_LIMIT`; archive old incident associations before retrying.
+
 ---
 
 ## Incidents
@@ -204,4 +206,4 @@ Ping monitors use `url` as the target and treat any HTTP response as reachable.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/backup` | Export a versioned configuration backup |
-| POST | `/api/backup/restore` | Validate and atomically restore a backup |
+| POST | `/api/backup/restore` | Validate, preflight the D1 indexed-write budget, and atomically restore a backup |

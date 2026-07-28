@@ -31,6 +31,7 @@ export function makeEnv(d1: D1Database): Env {
   return {
     DB: d1,
     LOGIN_RATE_LIMITER: { limit: async () => ({ success: true }) },
+    PUBLIC_STATUS_RATE_LIMITER: { limit: async () => ({ success: true }) },
     CHECK_ANALYTICS: analytics,
     API_ANALYTICS: analytics,
     PINGFLARE_INSTANCE_ID: 'test',

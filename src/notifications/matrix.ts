@@ -9,7 +9,12 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
 }
 
-export async function sendMatrix(config: Record<string, string>, payload: NotificationPayload, locale: string): Promise<void> {
+export async function sendMatrix(
+  config: Record<string, string>,
+  payload: NotificationPayload,
+  locale: string,
+  signal?: AbortSignal,
+): Promise<void> {
   const { homeserverUrl, accessToken, roomId } = config
   if (!homeserverUrl || !accessToken || !roomId) throw new Error('Missing homeserverUrl, accessToken, or roomId for Matrix')
 
@@ -35,6 +40,7 @@ export async function sendMatrix(config: Record<string, string>, payload: Notifi
       'Authorization': `Bearer ${accessToken}`,
     },
     body: JSON.stringify(body),
+    signal,
   })
 
   await assertResponseOk(res, 'Matrix')

@@ -38,6 +38,14 @@ namespace_id = "104142"
 limit = 5
 period = 60
 
+[[ratelimits]]
+name = "PUBLIC_STATUS_RATE_LIMITER"
+namespace_id = "104143"
+
+[ratelimits.simple]
+limit = 4
+period = 60
+
 [triggers]
 crons = [
   "* * * * *"

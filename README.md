@@ -22,6 +22,7 @@ Sends alerts through Discord, Slack, Telegram, Email, ntfy, Pushover, generic we
 - **Monitoring dashboard** — searchable and sortable monitor inventory, bulk actions, response-time and uptime charts, and incident management.
 - **Custom status pages** — choose monitors, branding, theme, history range, visibility, and published incident updates.
 - **Fast, exact history** — D1 stores authoritative current state and compact daily rollups; Analytics Engine receives high-resolution telemetry; completed history is cached without ever caching current status.
+- **Reliable alert delivery** — monitor and incident truth commits before provider I/O; a deduplicated D1 outbox retries incomplete channel fan-out with bounded timeouts and backoff.
 - **Cloudflare or self-hosted** — deploy to Workers + D1 or run the same application with Docker and SQLite.
 
 ---
@@ -57,7 +58,7 @@ The Deploy to Cloudflare flow reads `wrangler.toml`, provisions the `DB` D1 data
 
 > **One-time account prerequisite:** before the first deployment, open **Workers & Pages → Analytics Engine** in the Cloudflare dashboard and select **Enable Analytics Engine**. Cloudflare rejects a Worker with Analytics Engine bindings with error `10089` until this account-level feature is enabled.
 
-After enablement, the two Analytics Engine datasets declared in `wrangler.toml` are created automatically and begin receiving points on first use. Cache API needs no separate resource or binding. Static assets bypass Worker code, while `/api/*` and `/h/*` run through the Worker.
+After enablement, the two Analytics Engine datasets and two rate-limit namespaces declared in `wrangler.toml` are bound during deployment; Analytics Engine datasets begin receiving points on first use. Cache API needs no separate resource or binding. Static assets bypass Worker code, while `/api/*` and `/h/*` run through the Worker.
 
 During setup, provide these runtime secrets:
 
@@ -80,7 +81,7 @@ npx wrangler login
 npm run deploy
 ```
 
-`npm run deploy` runs the production build, reconciles the v1.6 migration ledger only when every expected v1.6 schema object is already present, applies pending migrations through the `DB` binding, and deploys only after migration success. Existing installations upgrading from v1.6.0 then apply migrations `0005` and `0006`. A partial legacy schema stops deployment without changing the ledger. The Worker never runs schema DDL on an API request.
+`npm run deploy` runs the production build, reconciles the v1.6 migration ledger only when every expected v1.6 table, upgraded column, and index is present, applies pending migrations through the `DB` binding, and deploys only after migration success. A complete ledgerless v1.6 database receives a standard Wrangler ledger for migrations `0000`–`0004`; a partial or mixed schema stops without mutation. Existing installations then apply migrations `0005`–`0010`. These add compact rollups, indexed scheduling, the durable notification outbox, single-open-incident enforcement, the public-read budget, and bounded incident-feed/detail access paths. Before changing the schema, deployment sums the source rows for every missing index, every pending obsolete-index build or cleanup, and the scheduler and incident-counter backfills. An estimate above 40,000 indexed writes stops the deployment without mutation, preventing a Free-plan upgrade from consuming its daily write allowance partway through. The Worker never runs schema DDL on an API request.
 
 > **Existing Workers Builds projects:** change the saved deploy command to `npm run deploy` before merging this upgrade. A saved `npx wrangler deploy` command bypasses D1 migrations and must not be used for schema-dependent upgrades.
 
@@ -154,14 +155,24 @@ As of July 2026, the relevant included limits are:
 - [Analytics Engine Free](https://developers.cloudflare.com/analytics/analytics-engine/pricing/): 100,000 data points/day and 10,000 read queries/day, with [three-month retention](https://developers.cloudflare.com/analytics/analytics-engine/limits/)
 - Cron Triggers: minimum one-minute interval
 
-Pingflare admits at most eight routine observations per cron invocation and reduces the batch automatically when alert transitions need more D1 work. For capacity planning, keep:
+Pingflare hard-caps a cron run at eight observations. Under the Free-plan query limit, one cron invocation admits:
+
+- up to 2 steady healthy checks after legacy catch-up completes;
+- 1 steady healthy check while a catch-up batch is active; or
+- at least 1 worst-case alert transition while catch-up is active.
+
+For a new installation or a completed upgrade, the theoretical steady ceiling is:
 
 ```text
-sum(60 / monitor_interval_seconds) <= 8 checks per minute
+sum(60 / monitor_interval_seconds) <= 2 checks per minute
 ```
 
-That is an execution ceiling, not a promise that every workload will fit every Free-plan quota. Leave headroom for API traffic, heartbeat/agent pushes, incidents, and notification work. A conservative target is six checks/minute: about 6 one-minute monitors, 30 five-minute monitors, or 360 hourly monitors. Analytics Engine alone would allow roughly 69 one-minute points before API telemetry, but D1/Worker reliability is the tighter design constraint.
+That is about 2 one-minute monitors, 10 five-minute monitors, or 120 hourly monitors. If monitoring must never build a backlog during legacy catch-up or a transition-heavy outage, plan for 1 check/minute (1, 5, or 60). Analytics Engine alone would allow roughly 69 one-minute points before API telemetry, but D1/Worker reliability is the tighter design constraint. API traffic, heartbeat/agent pushes, incidents, and delivery retries also consume daily Free-plan quotas.
 
-Every check updates one compact D1 counter row and writes one Analytics Engine point. D1 diagnostic logs are sparse: transitions, failures, first checks, and a periodic sample. Dashboard historical polling is five minutes instead of ten seconds, and completed aggregate rows can be served from Cache API.
+Every check updates one compact D1 counter row and writes one Analytics Engine point. D1 diagnostic logs are sparse: transitions, failures, first checks, and a periodic sample. Notification retries are drained in bounded batches without consuming the check-state source of truth. Dashboard historical polling is five minutes instead of ten seconds, and completed aggregate rows can be served from Cache API.
+
+Public status pages support up to 180 selected monitors. A per-visitor limiter runs before D1, while an account-wide UTC-day ledger reserves at most four million public row reads and leaves at least one million for monitoring and the authenticated UI. Completed-day history is cached for 24 hours behind revisioned keys; current state, recent logs, and active incidents are always read live. Public incident queries start from selected-monitor links, reserve trigger-maintained candidate counts before reading, and fetch at most 20 reports with 20 updates each. A page with more than 20,000 historical incident links returns `PUBLIC_INCIDENT_FEED_HISTORY_LIMIT` instead of running an unsafe query; archive old manual incident associations before retrying.
+
+Delete, bulk-delete, reset-statistics, and backup-restore operations preflight their cascaded table and index maintenance. An operation estimated above 40,000 D1 row writes is rejected before mutation with remediation guidance; large legacy histories require paced retention cleanup or a temporary paid-plan migration.
 
 > When running in Docker mode, there are no such limits — SQLite has no row quotas and the cron runs on the same Node.js process.

@@ -140,6 +140,29 @@ describe('recordApiRequest', () => {
     expect(writeDataPoint).not.toHaveBeenCalled();
   });
 
+  it('stores the inverse application sampling rate on retained successes', () => {
+    const writeDataPoint = vi.fn();
+    const env: AnalyticsEngineEnv = {
+      API_ANALYTICS: dataset(writeDataPoint),
+      API_ANALYTICS_SAMPLE_RATE: '0.25',
+    };
+    vi.spyOn(Math, 'random').mockReturnValue(0.249);
+
+    recordApiRequest(env, {
+      instance: 'primary',
+      operation: 'monitors.list',
+      method: 'get',
+      statusCode: 200,
+      durationMs: 15,
+      timestamp: 99,
+    });
+
+    expect(writeDataPoint).toHaveBeenCalledWith({
+      blobs: ['api.v2', 'primary', 'monitors.list', 'GET', ''],
+      doubles: [15, 1, 200, 0, 99, 4],
+    });
+  });
+
   it('always writes errors even when successful-request sampling is disabled', () => {
     const writeDataPoint = vi.fn();
     const env: AnalyticsEngineEnv = {
@@ -160,8 +183,8 @@ describe('recordApiRequest', () => {
 
     expect(random).not.toHaveBeenCalled();
     expect(writeDataPoint).toHaveBeenCalledWith({
-      blobs: ['api.v1', 'primary', 'monitors.create', 'POST', 'db_error'],
-      doubles: [22, 1, 500, 1, 100],
+      blobs: ['api.v2', 'primary', 'monitors.create', 'POST', 'db_error'],
+      doubles: [22, 1, 500, 1, 100, 1],
     });
   });
 

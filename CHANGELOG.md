@@ -8,25 +8,49 @@
 - Versioned aggregate caching for completed historical days, with a bounded Docker/Node fallback
 - A consolidated monitor analytics endpoint and detailed storage/telemetry architecture documentation
 - A global scheduler lease that prevents overlapping scheduled and manual runs
+- A durable, deduplicated notification-delivery outbox with bounded provider attempts and capped-backoff retries
+- An account-wide UTC-day D1 read ledger that preserves monitoring capacity under public-status traffic
 
 ### Improved
 - Dashboard current-state polling now runs every 30 seconds, historical polling every five minutes, and both pause in hidden tabs
 - Historical dashboard and public-status queries read compact daily rows instead of scanning minute-level status logs
 - D1 status logs are sparse diagnostic evidence while Analytics Engine receives every high-resolution observation
-- Due monitors and heartbeat state are selected in sets, retention cleanup drains in bounded batches, and healthy checks reset tolerated failure streaks with one conditional write
+- Due monitors and heartbeat state are selected in sets, retention cleanup is durably capped at 200 rows per hour across Worker cold starts, and healthy checks reset tolerated failure streaks with one conditional write
 - Static assets bypass Worker execution; only API and heartbeat paths run Worker-first
-- Monitor and incident transitions commit before bounded notification delivery; total provider failures retry the initial alert
+- Monitor and incident transitions commit before bounded notification delivery; incomplete alert, reminder, and recovery fan-out remains retryable
 - Bulk monitor actions and backup restore use set-based JSON operations to stay below D1's per-invocation query limit
+- Large history and public-status ID sets use one JSON1 query instead of repeated 90-ID D1 chunks
+- Incident, status-page, monitor-channel, and settings associations use bounded JSON1 set writes instead of per-row D1 loops
+- API Analytics Engine points include application sampling weights so request and error estimates remain unbiased
+- Manual check feedback distinguishes an active scheduler lease from a successful run, and dashboard data-source failures no longer hide each other
+- Public status reads reuse loaded monitor rows and precompute UTC labels once per response
+- Public incident feeds drive from selected-monitor links, reserve trigger-maintained candidate counts before querying, and use deterministic bounded indexes for report updates and monitor detail
+- Destructive monitor, statistics-reset, and restore cascades are rejected before mutation when indexed writes exceed the Free-plan safety envelope
 
 ### Reliability
 - Current status, scheduling, alerts, incidents, and exact uptime remain authoritative in D1/SQLite
 - Cache never stores current status, recent logs, or active incidents; complete API responses use `no-store`
 - Analytics Engine and Cache failures fall back without interrupting monitoring
 - Worker request-path schema DDL was removed; deployment applies migrations before publishing code
+- HTTP, DNS, and ping checks enforce one end-to-end 60-second maximum deadline, including streamed bodies and digest retries
+- Indexed `next_check_at` scheduling and a 120-second renewable lease prevent overlap without scanning scheduling expressions
+- Heartbeat and agent cron observations use compare-and-swap guards so a stale timeout cannot overwrite a newer inbound push
+- Legacy history catch-up is restartable, paced to 25 rows every five minutes to protect D1's daily write quota, and rescans late writes before completion
+- Open incidents are concurrency-safe, and recovery state commits even when maintenance or notification providers suppress delivery
+- Observation revisions prevent older cron and inbound work from overwriting newer monitor, incident, or notification truth
+- Alert-transition failures pull the durable scheduling cursor forward for a prompt retry, including a fallback marker attempt
+- Cron admission budgets hidden claimed-DOWN recovery repairs at their full cost and is regression-tested against D1's 50-query invocation limit
+- Claimed or partially delivered DOWN notifications are reconciled before recovery, including after a healthy-path crash
+- Queued DOWN notifications wait until active maintenance ends, and cyclic DNS compression pointers fail within bounded work
+- Notification provider work is serialized per monitor; late DOWN and recovery sends stage the corrective opposite event before cleanup
+- Inbound heartbeat and agent pushes retry one fresh revision when cron wins their initial compare-and-swap
+- Inbound retries advance to a monotonic winning timestamp and refuse to overwrite a newer real push
+- Public status summary and detail reads are rate-limited before D1, capped at 180 monitors, and governed by an account-wide daily read budget; protected polls use short-lived HMAC access tokens after unlock
+- CI replays the D1 migration chain and validates a production Worker bundle
 
 ### Upgrade
-- Apply D1 migrations `0005_flimsy_quicksilver.sql` and `0006_remarkable_johnny_blaze.sql`
-- `npm run deploy` now safely reconciles legacy v1.6 migration-ledger drift, applies pending migrations through the `DB` binding, and then deploys
+- Apply D1 migrations `0005_flimsy_quicksilver.sql` through `0010_bounded_incident_feed.sql`
+- `npm run deploy` now validates and reconciles complete ledgerless v1.6 schemas, sums every pending index build, obsolete-index cleanup, and migration backfill against a 40,000-write safety envelope before mutation, applies pending migrations through the `DB` binding, and then deploys
 
 ## [1.6.0] - 2026-07-27
 

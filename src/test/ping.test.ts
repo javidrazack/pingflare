@@ -10,6 +10,8 @@ const base: Monitor = {
   interval: 60,
   active: true,
   lastCheckedAt: null,
+  nextCheckAt: 0,
+  observationRevision: '',
   lastStatus: 'pending',
   reminderIntervalHours: null,
   toleranceFailures: 1,
@@ -89,18 +91,25 @@ describe('checkPing', () => {
     expect(result.message).toBe('Ping OK · HTTP 500')
   })
 
-  it('returns up on non-HTTP protocol response (TCP connected, port open)', async () => {
+  it('returns up on an explicit non-HTTP protocol response', async () => {
     mockFetchError('Response parsing failed: invalid HTTP response')
     const result = await checkPing({ ...base, url: 'http://1.1.1.1:22' })
     expect(result.status).toBe('up')
     expect(result.message).toBe('Ping OK · :22 open')
   })
 
-  it('returns up on port 53 with protocol mismatch', async () => {
+  it('returns up on a narrow port 53 protocol mismatch', async () => {
     mockFetchError('Invalid character in HTTP response')
     const result = await checkPing({ ...base, url: '1.1.1.1:53' })
     expect(result.status).toBe('up')
     expect(result.message).toBe('Ping OK · :53 open')
+  })
+
+  it('returns down for an opaque Workers fetch TypeError', async () => {
+    mockFetchError('Network connection lost', 'TypeError')
+    const result = await checkPing(base)
+    expect(result.status).toBe('down')
+    expect(result.message).toContain('Network connection lost')
   })
 
   it('returns down on connection refused (ECONNREFUSED)', async () => {

@@ -73,19 +73,22 @@ describe('getOrComputeAggregate', () => {
     expect(loader).toHaveBeenCalledTimes(4)
   })
 
-  it('coalesces concurrent misses for the same cache key', async () => {
-    let resolveLoader!: (value: { samples: number }) => void
+  it('does not share in-flight work across concurrent requests', async () => {
+    const cache = new FakeCache()
+    const resolveLoaders: Array<(value: { samples: number }) => void> = []
     const loader = vi.fn(() => new Promise<{ samples: number }>((resolve) => {
-      resolveLoader = resolve
+      resolveLoaders.push(resolve)
     }))
+    const cacheOptions = options('monitor-1', { cache })
 
-    const first = getOrComputeAggregate(options('monitor-1'), loader)
-    const second = getOrComputeAggregate(options('monitor-1'), loader)
-    resolveLoader({ samples: 42 })
+    const first = getOrComputeAggregate(cacheOptions, loader)
+    const second = getOrComputeAggregate(cacheOptions, loader)
+    await vi.waitFor(() => expect(loader).toHaveBeenCalledTimes(2))
+    resolveLoaders[0]({ samples: 41 })
+    resolveLoaders[1]({ samples: 42 })
 
-    await expect(first).resolves.toEqual({ value: { samples: 42 }, status: 'MISS' })
+    await expect(first).resolves.toEqual({ value: { samples: 41 }, status: 'MISS' })
     await expect(second).resolves.toEqual({ value: { samples: 42 }, status: 'MISS' })
-    expect(loader).toHaveBeenCalledTimes(1)
   })
 
   it('falls back to memory when Cache API match and put throw', async () => {

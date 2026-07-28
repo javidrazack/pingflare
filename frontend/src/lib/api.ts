@@ -85,7 +85,7 @@ export const api = {
   },
 
   cron: {
-    run: () => request<{ ok: boolean; triggeredAt: number }>('/cron/run', { method: 'POST' }),
+    run: () => request<CronRunResult>('/cron/run', { method: 'POST' }),
   },
 
   settings: {
@@ -207,7 +207,7 @@ export interface StatusLog {
   colo: string | null
   countryCode: string | null
   originIp: string | null
-  source: 'cron' | 'heartbeat' | 'agent' | null
+  source: 'cron' | 'heartbeat' | 'agent' | 'legacy' | null
 }
 
 export interface Incident {
@@ -256,6 +256,15 @@ export interface MonitorAnalytics {
   up: number
   down: number
   avgResponseMs: number | null
+}
+
+export interface CronRunResult {
+  ok: boolean
+  triggeredAt: number
+  checked: number
+  deferred: number
+  diagnosticsWritten: number
+  skippedBecauseLeased: boolean
 }
 
 export interface StatusPage {

@@ -29,6 +29,10 @@ class ShimStatement {
   }
 
   async run(): Promise<{ success: boolean; meta: Record<string, unknown> }> {
+    return this._execSync()
+  }
+
+  _execSync(): { success: boolean; meta: Record<string, unknown> } {
     const info = this.values.length
       ? this.stmt.run(...this.values)
       : this.stmt.run()
@@ -68,9 +72,6 @@ class ShimStatement {
     return rows
   }
 
-  _execSync(): void {
-    this.values.length ? this.stmt.run(...this.values) : this.stmt.run()
-  }
 }
 
 export class D1Shim {
@@ -80,12 +81,14 @@ export class D1Shim {
     return new ShimStatement(this.db, sql)
   }
 
-  async batch(stmts: ShimStatement[]): Promise<{ success: boolean }[]> {
-    const results: { success: boolean }[] = []
+  async batch(stmts: ShimStatement[]): Promise<Array<{
+    success: boolean
+    meta: Record<string, unknown>
+  }>> {
+    const results: Array<{ success: boolean; meta: Record<string, unknown> }> = []
     const runAll = this.db.transaction(() => {
       for (const stmt of stmts) {
-        stmt._execSync()
-        results.push({ success: true })
+        results.push(stmt._execSync())
       }
     })
     runAll()

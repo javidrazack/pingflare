@@ -11,6 +11,10 @@ import {
 } from '../db'
 import { requireAuth } from '../middleware/auth'
 import { readJsonBodyWithLimit, RequestBodyTooLargeError } from '../request'
+import {
+  assertDestructiveMonitorWriteBudget,
+  DestructiveD1WriteBudgetError,
+} from '../services/destructive-write-budget'
 import type { Env } from '../index'
 
 const MAX_PAYLOAD_BYTES = 512 * 1024
@@ -312,6 +316,20 @@ router.post('/restore', async (c) => {
       reason: optionalString(window.reason),
     }))
 
+    const plannedWrites =
+      restoredSettings.length * 2
+      + restoredChannels.length * 2
+      + restoredMonitors.length * 7
+      + restoredAlertStates.length * 2
+      + restoredHeartbeatTokens.length * 2
+      + restoredMonitorNotifications.length * 2
+      + restoredPages.length * 3
+      + restoredPageMonitors.length * 2
+      + restoredMaintenanceWindows.length * 3
+    await assertDestructiveMonitorWriteBudget(c.env.DB, 'restore', {
+      plannedWrites,
+    })
+
     // D1 counts every statement inside batch() toward its 50-query invocation
     // limit. Loading each table from one JSON parameter keeps a 5,000-record
     // restore to a fixed, small number of statements.
@@ -369,6 +387,14 @@ router.post('/restore', async (c) => {
     await c.env.DB.batch(statements)
     return c.json({ ok: true })
   } catch (error) {
+    if (error instanceof DestructiveD1WriteBudgetError) {
+      return c.json({
+        error: error.message,
+        code: 'D1_DESTRUCTIVE_WRITE_BUDGET_EXCEEDED',
+        estimatedWrites: error.estimatedWrites,
+        limit: error.limit,
+      }, 409)
+    }
     return c.json({ error: error instanceof Error ? error.message : 'Invalid backup' }, 400)
   }
 })

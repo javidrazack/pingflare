@@ -29,30 +29,4 @@ ALTER TABLE `monitors` ADD `day_response_count` integer DEFAULT 0 NOT NULL;--> s
 ALTER TABLE `monitors` ADD `day_response_sum_ms` integer DEFAULT 0 NOT NULL;--> statement-breakpoint
 ALTER TABLE `monitors` ADD `day_response_min_ms` integer;--> statement-breakpoint
 ALTER TABLE `monitors` ADD `day_response_max_ms` integer;--> statement-breakpoint
-ALTER TABLE `status_logs` ADD `source` text;--> statement-breakpoint
-INSERT INTO `monitor_daily_rollups` (
-	`monitor_id`,
-	`day`,
-	`checks`,
-	`up_count`,
-	`down_count`,
-	`response_count`,
-	`response_sum_ms`,
-	`response_min_ms`,
-	`response_max_ms`
-)
-SELECT
-	`monitor_id`,
-	`checked_at` - (`checked_at` % 86400),
-	COUNT(*),
-	SUM(CASE WHEN `status` = 'up' THEN 1 ELSE 0 END),
-	SUM(CASE WHEN `status` = 'down' THEN 1 ELSE 0 END),
-	SUM(CASE WHEN `response_time_ms` IS NOT NULL THEN 1 ELSE 0 END),
-	COALESCE(SUM(`response_time_ms`), 0),
-	MIN(`response_time_ms`),
-	MAX(`response_time_ms`)
-FROM `status_logs`
-GROUP BY `monitor_id`, `checked_at` - (`checked_at` % 86400);--> statement-breakpoint
-UPDATE `status_logs`
-SET `source` = 'legacy'
-WHERE `source` IS NULL;
+ALTER TABLE `status_logs` ADD `source` text;

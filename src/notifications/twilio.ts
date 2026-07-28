@@ -2,7 +2,12 @@ import type { NotificationPayload } from './index'
 import { formatMessage } from './messages'
 import { assertResponseOk } from './http'
 
-export async function sendTwilio(config: Record<string, string>, payload: NotificationPayload, locale: string): Promise<void> {
+export async function sendTwilio(
+  config: Record<string, string>,
+  payload: NotificationPayload,
+  locale: string,
+  signal?: AbortSignal,
+): Promise<void> {
   const { accountSid, authToken, fromNumber, toNumber } = config
   if (!accountSid || !authToken || !fromNumber || !toNumber) {
     throw new Error('Missing accountSid, authToken, fromNumber, or toNumber for Twilio')
@@ -26,6 +31,7 @@ export async function sendTwilio(config: Record<string, string>, payload: Notifi
       'Authorization': `Basic ${auth}`
     },
     body: formData.toString(),
+    signal,
   })
 
   await assertResponseOk(res, 'Twilio')

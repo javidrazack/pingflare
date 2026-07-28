@@ -2,7 +2,12 @@ import type { NotificationPayload } from './index'
 import { formatMessage } from './messages'
 import { assertResponseOk } from './http'
 
-export async function sendPagerDuty(config: Record<string, string>, payload: NotificationPayload, locale: string): Promise<void> {
+export async function sendPagerDuty(
+  config: Record<string, string>,
+  payload: NotificationPayload,
+  locale: string,
+  signal?: AbortSignal,
+): Promise<void> {
   const { routingKey } = config
   if (!routingKey) throw new Error('Missing routingKey for PagerDuty')
 
@@ -28,6 +33,7 @@ export async function sendPagerDuty(config: Record<string, string>, payload: Not
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   })
 
   await assertResponseOk(res, 'PagerDuty')

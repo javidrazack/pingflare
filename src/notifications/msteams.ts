@@ -2,7 +2,12 @@ import type { NotificationPayload } from './index'
 import { formatMessage } from './messages'
 import { assertResponseOk } from './http'
 
-export async function sendMSTeams(config: Record<string, string>, payload: NotificationPayload, locale: string): Promise<void> {
+export async function sendMSTeams(
+  config: Record<string, string>,
+  payload: NotificationPayload,
+  locale: string,
+  signal?: AbortSignal,
+): Promise<void> {
   const { webhookUrl } = config
   if (!webhookUrl) throw new Error('Missing webhookUrl for MS Teams')
 
@@ -21,6 +26,7 @@ export async function sendMSTeams(config: Record<string, string>, payload: Notif
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   })
 
   await assertResponseOk(res, 'MS Teams')

@@ -10,6 +10,8 @@ const base: Monitor = {
   interval: 60,
   active: true,
   lastCheckedAt: null,
+  nextCheckAt: 0,
+  observationRevision: '',
   lastStatus: 'pending',
   reminderIntervalHours: null,
   toleranceFailures: 1,
@@ -147,6 +149,22 @@ describe('checkDns', () => {
     const result = await checkDns(base)
     expect(result.status).toBe('up')
     expect(result.message).toBe('DNS OK · 1.2.3.4')
+  })
+
+  it('rejects cyclic DNS compression pointers without spinning past the deadline', async () => {
+    const wire = new Uint8Array([
+      0x00, 0x00, 0x81, 0x80, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01,
+    ])
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(wire, {
+      status: 200,
+      headers: { 'Content-Type': 'application/dns-message' },
+    })))
+
+    const result = await checkDns({ ...base, timeout: 1 })
+
+    expect(result.status).toBe('down')
+    expect(result.message).toContain('compression-pointer cycle')
   })
 
   it('returns down when response is 200 but JSON is malformed', async () => {

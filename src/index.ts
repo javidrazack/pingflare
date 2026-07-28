@@ -36,6 +36,10 @@ app.use('*', async (c, next) => {
       !c.env.LOGIN_RATE_LIMITER || typeof c.env.LOGIN_RATE_LIMITER.limit !== 'function'
         ? 'LOGIN_RATE_LIMITER (rate-limit binding)'
         : null,
+      !c.env.PUBLIC_STATUS_RATE_LIMITER
+        || typeof c.env.PUBLIC_STATUS_RATE_LIMITER.limit !== 'function'
+        ? 'PUBLIC_STATUS_RATE_LIMITER (rate-limit binding)'
+        : null,
     ].filter((value): value is string => value !== null)
     if (missing.length > 0 || tooShort.length > 0 || missingBindings.length > 0) {
       const issues = [

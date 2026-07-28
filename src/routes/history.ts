@@ -25,8 +25,15 @@ function roundedPercent(up: number, total: number): number | null {
 router.get('/uptime-summary', async (c) => {
   const db = getDb(c.env.DB)
   const days = boundedInt(c.req.query('days'), 30, 1, 365)
-  const monitorRows = await db.select({ id: monitors.id }).from(monitors)
-  const result = await getMonitorAnalytics(c.env, monitorRows.map((row) => row.id), days, undefined, c.req.url)
+  const monitorRows = await db.select().from(monitors)
+  const result = await getMonitorAnalytics(
+    c.env,
+    monitorRows.map((row) => row.id),
+    days,
+    undefined,
+    c.req.url,
+    monitorRows,
+  )
   const uptimes: Record<string, number | null> = {}
   for (const id of monitorRows.map((row) => row.id)) {
     const analytics = result.analytics[id]
@@ -88,7 +95,7 @@ router.get('/:id/analytics', async (c) => {
   const monitor = await db.query.monitors.findFirst({ where: eq(monitors.id, id) })
   if (!monitor) return c.json({ error: 'Not found' }, 404)
 
-  const result = await getMonitorAnalytics(c.env, [id], days, undefined, c.req.url)
+  const result = await getMonitorAnalytics(c.env, [id], days, undefined, c.req.url, [monitor])
   c.header('X-Pingflare-Aggregate-Cache', result.cacheStatus)
   return c.json(result.analytics[id])
 })
@@ -102,7 +109,7 @@ router.get('/:id/uptime', async (c) => {
   const monitor = await db.query.monitors.findFirst({ where: eq(monitors.id, id) })
   if (!monitor) return c.json({ error: 'Not found' }, 404)
 
-  const result = await getMonitorAnalytics(c.env, [id], days, undefined, c.req.url)
+  const result = await getMonitorAnalytics(c.env, [id], days, undefined, c.req.url, [monitor])
   const analytics = result.analytics[id]
   c.header('X-Pingflare-Aggregate-Cache', result.cacheStatus)
   return c.json({
@@ -120,7 +127,7 @@ router.get('/:id/daily', async (c) => {
   const monitor = await db.query.monitors.findFirst({ where: eq(monitors.id, id) })
   if (!monitor) return c.json({ error: 'Not found' }, 404)
 
-  const result = await getMonitorAnalytics(c.env, [id], days, undefined, c.req.url)
+  const result = await getMonitorAnalytics(c.env, [id], days, undefined, c.req.url, [monitor])
   c.header('X-Pingflare-Aggregate-Cache', result.cacheStatus)
   return c.json(result.analytics[id]?.daily ?? [])
 })

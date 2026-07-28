@@ -118,10 +118,10 @@ describe('/api/monitors/:id/uptime', () => {
     const { db, d1 } = ctx
     const id = await insertMonitor(db)
     const now = nowSecs()
-    await insertLog(db, d1, id, 'up', now - 30)
-    await insertLog(db, d1, id, 'up', now - 60)
-    await insertLog(db, d1, id, 'up', now - 90)
     await insertLog(db, d1, id, 'down', now - 120)
+    await insertLog(db, d1, id, 'up', now - 90)
+    await insertLog(db, d1, id, 'up', now - 60)
+    await insertLog(db, d1, id, 'up', now - 30)
 
     const { app, env } = buildApp(d1)
     const res = await get(app, env, `/api/monitors/${id}/uptime`, auth)
@@ -205,8 +205,18 @@ describe('/api/monitors/:id/incidents', () => {
     const { db, d1 } = ctx
     const id = await insertMonitor(db)
     const now = nowSecs()
-    await db.insert(incidents).values({ id: crypto.randomUUID(), monitorId: id, startedAt: now - 3600 })
-    await db.insert(incidents).values({ id: crypto.randomUUID(), monitorId: id, startedAt: now - 7200 })
+    await db.insert(incidents).values({
+      id: crypto.randomUUID(),
+      monitorId: id,
+      startedAt: now - 3600,
+    })
+    await db.insert(incidents).values({
+      id: crypto.randomUUID(),
+      monitorId: id,
+      startedAt: now - 7200,
+      resolvedAt: now - 5400,
+      durationSeconds: 1800,
+    })
 
     const { app, env } = buildApp(d1)
     const res = await get(app, env, `/api/monitors/${id}/incidents`, auth)

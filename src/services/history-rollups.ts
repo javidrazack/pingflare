@@ -1,4 +1,4 @@
-import { inArray } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import { getDb, monitors } from '../db'
 import type { Monitor } from '../db/schema'
 import type { Env } from '../index'
@@ -37,8 +37,7 @@ export interface HistoryResult {
 }
 
 const EMPTY_CACHE_STATUS = 'BYPASS' as const
-const FROZEN_HISTORY_TTL_SECONDS = 60 * 60
-const D1_ID_CHUNK_SIZE = 90
+const FROZEN_HISTORY_TTL_SECONDS = 24 * 60 * 60
 
 function utcDay(timestamp: number): number {
   return timestamp - (timestamp % 86400)
@@ -97,30 +96,24 @@ async function queryRollups(
   toDayExclusive: number,
 ): Promise<RollupRow[]> {
   if (monitorIds.length === 0 || fromDay >= toDayExclusive) return []
-  const rows: RollupRow[] = []
-  for (let offset = 0; offset < monitorIds.length; offset += D1_ID_CHUNK_SIZE) {
-    const chunk = monitorIds.slice(offset, offset + D1_ID_CHUNK_SIZE)
-    const placeholders = chunk.map(() => '?').join(', ')
-    const result = await env.DB.prepare(`
-      SELECT
-        monitor_id AS monitorId,
-        day,
-        checks,
-        up_count AS upCount,
-        down_count AS downCount,
-        response_count AS responseCount,
-        response_sum_ms AS responseSumMs,
-        response_min_ms AS responseMinMs,
-        response_max_ms AS responseMaxMs
-      FROM monitor_daily_rollups
-      WHERE monitor_id IN (${placeholders})
-        AND day >= ?
-        AND day < ?
-      ORDER BY monitor_id, day
-    `).bind(...chunk, fromDay, toDayExclusive).all<Record<string, unknown>>()
-    rows.push(...result.results.map(normalizeRow))
-  }
-  return rows
+  const result = await env.DB.prepare(`
+    SELECT
+      monitor_id AS monitorId,
+      day,
+      checks,
+      up_count AS upCount,
+      down_count AS downCount,
+      response_count AS responseCount,
+      response_sum_ms AS responseSumMs,
+      response_min_ms AS responseMinMs,
+      response_max_ms AS responseMaxMs
+    FROM monitor_daily_rollups
+    WHERE monitor_id IN (SELECT value FROM json_each(?))
+      AND day >= ?
+      AND day < ?
+    ORDER BY monitor_id, day
+  `).bind(JSON.stringify(monitorIds), fromDay, toDayExclusive).all<Record<string, unknown>>()
+  return result.results.map(normalizeRow)
 }
 
 async function historyCacheKey(monitorsForKey: Monitor[], fromDay: number, toDay: number): Promise<string> {
@@ -141,54 +134,69 @@ function percent(up: number, total: number, precision = 2): number | null {
   return Math.round((up / total) * 100 * factor) / factor
 }
 
+interface DayLabel {
+  day: number
+  date: string
+}
+
+function emptyAggregate(monitorId: string, day: number): RollupRow {
+  return {
+    monitorId,
+    day,
+    checks: 0,
+    upCount: 0,
+    downCount: 0,
+    responseCount: 0,
+    responseSumMs: 0,
+    responseMinMs: null,
+    responseMaxMs: null,
+  }
+}
+
+function addAggregate(target: RollupRow, row: RollupRow): void {
+  target.checks += row.checks
+  target.upCount += row.upCount
+  target.downCount += row.downCount
+  target.responseCount += row.responseCount
+  target.responseSumMs += row.responseSumMs
+}
+
 function buildMonitorAnalytics(
   monitorId: string,
   rows: Map<number, RollupRow> | undefined,
-  now: number,
+  today: number,
   days: number,
+  dayLabels: DayLabel[],
 ): MonitorAnalytics {
-  const today = utcDay(now)
+  const start1 = today
+  const start7 = today - 6 * 86400
+  const start30 = today - 29 * 86400
+  const start90 = today - 89 * 86400
+  const requestedStart = today - (days - 1) * 86400
+  const a1 = emptyAggregate(monitorId, start1)
+  const a7 = emptyAggregate(monitorId, start7)
+  const a30 = emptyAggregate(monitorId, start30)
+  const a90 = emptyAggregate(monitorId, start90)
+  const requested = emptyAggregate(monitorId, requestedStart)
 
-  function aggregate(windowDays: number): RollupRow {
-    const start = today - (windowDays - 1) * 86400
-    const total: RollupRow = {
-      monitorId,
-      day: start,
-      checks: 0,
-      upCount: 0,
-      downCount: 0,
-      responseCount: 0,
-      responseSumMs: 0,
-      responseMinMs: null,
-      responseMaxMs: null,
-    }
-    if (!rows) return total
+  if (rows) {
     for (const [day, row] of rows) {
-      if (day < start || day > today) continue
-      total.checks += row.checks
-      total.upCount += row.upCount
-      total.downCount += row.downCount
-      total.responseCount += row.responseCount
-      total.responseSumMs += row.responseSumMs
+      if (day > today) continue
+      if (day >= requestedStart) addAggregate(requested, row)
+      if (day >= start90) addAggregate(a90, row)
+      if (day >= start30) addAggregate(a30, row)
+      if (day >= start7) addAggregate(a7, row)
+      if (day >= start1) addAggregate(a1, row)
     }
-    return total
   }
 
-  const daily: DailyUptime[] = []
-  for (let offset = days - 1; offset >= 0; offset -= 1) {
-    const day = today - offset * 86400
+  const daily: DailyUptime[] = dayLabels.map(({ day, date }) => {
     const row = rows?.get(day)
-    daily.push({
-      date: new Date(day * 1000).toISOString().slice(0, 10),
+    return {
+      date,
       uptime: row ? percent(row.upCount, row.checks, 1) : null,
-    })
-  }
-
-  const a1 = aggregate(1)
-  const a7 = aggregate(7)
-  const a30 = aggregate(30)
-  const a90 = aggregate(90)
-  const requested = aggregate(days)
+    }
+  })
 
   return {
     monitorId,
@@ -219,17 +227,22 @@ export async function getMonitorAnalytics(
   days = 90,
   now = Math.floor(Date.now() / 1000),
   requestUrl?: string,
+  preloadedMonitors?: Monitor[],
+  reserveFrozenReadRows?: (estimatedRows: number) => Promise<void>,
 ): Promise<HistoryResult> {
   const uniqueIds = [...new Set(monitorIds)]
   if (uniqueIds.length === 0) return { analytics: {}, cacheStatus: EMPTY_CACHE_STATUS }
 
-  const db = getDb(env.DB)
-  const monitorRows: Monitor[] = []
-  for (let offset = 0; offset < uniqueIds.length; offset += D1_ID_CHUNK_SIZE) {
-    monitorRows.push(...await db.select()
+  const requestedIds = new Set(uniqueIds)
+  const monitorRows: Monitor[] = preloadedMonitors
+    ? preloadedMonitors.filter((monitor) => requestedIds.has(monitor.id))
+    : await getDb(env.DB).select()
       .from(monitors)
-      .where(inArray(monitors.id, uniqueIds.slice(offset, offset + D1_ID_CHUNK_SIZE))))
-  }
+      .where(sql`${monitors.id} IN (SELECT value FROM json_each(${JSON.stringify(uniqueIds)}))`)
+  const monitorOrder = new Map(uniqueIds.map((id, index) => [id, index]))
+  monitorRows.sort((left, right) =>
+    (monitorOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER)
+    - (monitorOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER))
   const foundIds = monitorRows.map((monitor) => monitor.id)
   if (foundIds.length === 0) return { analytics: {}, cacheStatus: EMPTY_CACHE_STATUS }
 
@@ -249,7 +262,11 @@ export async function getMonitorAnalytics(
       revision: 'v1',
       ttlSeconds: FROZEN_HISTORY_TTL_SECONDS,
       baseUrl: requestUrl ? new URL(requestUrl).origin : undefined,
-    }, () => queryRollups(env, foundIds, fromDay, frozenEnd))
+    }, async () => {
+      const frozenDays = Math.ceil((frozenEnd - fromDay) / 86400)
+      await reserveFrozenReadRows?.(foundIds.length * frozenDays + 10)
+      return queryRollups(env, foundIds, fromDay, frozenEnd)
+    })
     frozenRows = cached.value
     cacheStatus = cached.status
   }
@@ -267,9 +284,23 @@ export async function getMonitorAnalytics(
     mergeCurrentCounters(byMonitor, monitor, fromDay, today)
   }
 
+  const dayLabels: DayLabel[] = []
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    const day = today - offset * 86400
+    dayLabels.push({
+      day,
+      date: new Date(day * 1000).toISOString().slice(0, 10),
+    })
+  }
   const analytics: Record<string, MonitorAnalytics> = {}
   for (const id of foundIds) {
-    analytics[id] = buildMonitorAnalytics(id, byMonitor.get(id), now, days)
+    analytics[id] = buildMonitorAnalytics(
+      id,
+      byMonitor.get(id),
+      today,
+      days,
+      dayLabels,
+    )
   }
 
   return { analytics, cacheStatus }

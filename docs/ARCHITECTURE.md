@@ -7,7 +7,7 @@ Pingflare separates authoritative operational state from high-volume telemetry a
 | Concern | Cloudflare deployment | Docker deployment |
 |---|---|---|
 | Monitor configuration, current status, scheduler cursor | D1 | SQLite |
-| Alert state, incidents, notification configuration | D1 | SQLite |
+| Alert state, incidents, notification configuration and delivery outbox | D1 | SQLite |
 | Exact current UTC-day counters | D1 `monitors` row | SQLite `monitors` row |
 | Exact completed daily history | D1 `monitor_daily_rollups` | SQLite `monitor_daily_rollups` |
 | High-resolution check and agent telemetry | Analytics Engine | Not exported; exact counters remain local |
@@ -18,15 +18,16 @@ D1/SQLite is the source of truth. Analytics Engine writes are best-effort and ne
 
 ## Check write path
 
-1. A holder-owned D1 lease prevents scheduled and manual runs from overlapping. Long runs renew the lease before each additional check batch and again before persistence.
-2. The scheduler selects due active monitors in SQL and admits up to eight routine observations without starting checks that cannot fit the remaining D1 query budget.
-3. HTTP, DNS, and ping checks run in query-budgeted batches with concurrency up to six. Heartbeat and agent state is prefetched in one query.
-4. A D1 batch archives a completed UTC day when needed and updates `last_checked_at` plus exact current-day counters in the same transaction.
+1. A holder-owned 120-second D1 lease prevents scheduled and manual runs from overlapping. Long runs renew the lease before every external-check batch and again before persistence.
+2. The scheduler selects due active monitors through the indexed `next_check_at` cursor. It hard-caps each run at eight and admits only work that fits the remaining 50-query Free-plan budget after fixed cron and notification-delivery reserves.
+3. HTTP, DNS, and ping checks run in query-budgeted batches with concurrency up to six. Every check has one end-to-end deadline of at most 60 seconds, including response-body reads and digest-auth retries. Heartbeat and agent state is prefetched in one query.
+4. A D1 batch archives a completed UTC day when needed and updates `last_checked_at`, `next_check_at`, and exact current-day counters in the same transaction. Compare-and-swap guards discard a cron heartbeat/agent result if a newer inbound push committed first.
 5. A D1 diagnostic row is written only for first checks, status transitions, internal errors, or the ten-minute sample boundary.
 6. One privacy-bounded Analytics Engine point is emitted synchronously. A write failure is ignored.
-7. Alert handling runs after the scheduling cursor is durable. A steady healthy check uses one conditional alert-state reset so a successful check always breaks a failure streak.
+7. Alert handling runs after the scheduling cursor is durable. A steady healthy check uses one conditional alert-state reset so a successful check always breaks a failure streak. Transitions durably update monitor/incident truth and enqueue a deduplicated D1 delivery event; later observations repair an interrupted transition.
+8. Each invocation drains at most two notification-provider attempts. Provider I/O has a cancellation-aware 12-second deadline; incomplete fan-out retries indefinitely with exponential backoff capped at one hour.
 
-Monitor and incident transitions commit before notification I/O. Each provider attempt is bounded to 15 seconds; individual failures are logged and do not block the other state changes. If every configured channel fails for an initial down alert, its delivery timestamp remains empty so the next down observation retries.
+Monitor and incident transitions never depend on provider availability. Recovery closes the incident immediately while its notification remains retryable. Alert/reminder delivery state advances only after the snapshotted active channels complete; deleted or disabled channels are removed from pending fan-out.
 
 ## Read path
 
@@ -47,9 +48,10 @@ Cache keys include monitor IDs, per-monitor history revisions, and the requested
 | Analytics Engine unavailable at runtime | Monitoring and exact history continue in D1 |
 | Analytics Engine not enabled for the account | Cloudflare rejects deployment before changing the active Worker; enable it once in the dashboard and redeploy |
 | Cache API unavailable/miss | Query compact D1 rollups; use a bounded in-process fallback |
+| Public status polling abuse | A pre-D1 visitor limiter plus a four-million-row UTC-day D1 reservation ledger protects the account-wide read quota |
 | Duplicate cron/manual run | Second invocation exits when it cannot acquire the lease |
-| Notification provider failure | Operational state still commits; failure is logged |
-| Worker stops after a check | The renewable lease expires after 110 seconds; durable cursors prevent immediate duplicate scheduling once persistence completes |
+| Notification provider failure | Operational state still commits; the durable delivery row retries with capped backoff |
+| Worker stops after a check | The renewable lease expires after 120 seconds; durable cursors prevent immediate duplicate scheduling once persistence completes |
 | D1 migration failure | `npm run deploy` stops before deploying the new Worker |
 
 ## Query and write controls
@@ -57,9 +59,19 @@ Cache keys include monitor IDs, per-monitor history revisions, and the requested
 - Worker request-path schema DDL has been removed.
 - Due selection is indexed and performed in SQL instead of loading every active monitor.
 - Heartbeat rows are prefetched rather than queried once per monitor.
+- Legacy minute-log reconciliation processes at most 25 rows every five minutes, persists a restart cursor, rescans for late writes before completion, and never pauses routine monitoring. Including table/index maintenance for the hourly retention batch, the conservative worst-case model stays below 50,000 D1 row writes/day and leaves roughly half the Free allowance for monitoring and delivery work.
 - Daily uptime reads at most one compact row per monitor per day instead of scanning minute-level logs.
-- Retention deletes diagnostic rows in bounded batches of 200; a backlog continues draining on later cron runs before returning to hourly cleanup.
+- Multi-monitor history and public-status reads pass ID sets through one JSON1 parameter instead of issuing one query per 90 IDs.
+- Public status routes reuse already-loaded monitor rows, precompute shared date labels, cap pages at 180 monitors, and reserve conservative account-wide read units after page authorization but before expensive history work. Manual incident feeds drive from the selected monitor-link index; trigger-maintained per-monitor counts bound and pre-charge every candidate lookup.
+- Password-protected status pages use the strong password hash only to issue a short-lived, slug-scoped HMAC token; polling verifies that token cheaply.
+- Retention deletes at most 200 diagnostic rows per hour. Its next-run marker is persisted in D1, so backlog cleanup remains quota-bounded across Worker cold starts.
+- Destructive monitor/reset/restore paths estimate cascaded table and index writes and reject work above a 40,000-row safety envelope before changing data.
+- Deployment applies the same 40,000-write envelope to the combined source rows of every missing index, pending obsolete-index build or cleanup, and migration backfill before issuing any schema mutation.
 - Static frontend assets bypass Worker code; only `/api/*` and `/h/*` are Worker-first.
 - Dashboard current state polls every 30 seconds; historical aggregates poll every five minutes; hidden tabs pause both.
 
-The scheduler reserves worst-case query capacity before each external check batch, then uses the observed outcome cost to admit another batch when safe. It never performs a check whose result would have to be discarded for query-budget reasons. Deferred monitors remain due and are retried by the next cron invocation.
+The scheduler reserves eleven cron queries before admitting external work: nine for the normal fixed path and two for a batched alert-failure retry marker plus its fallback attempt. It also holds at least seven queries for the delivery drain. The drain upgrades from one to two provider attempts whenever the observed check path leaves the full 13-query allowance. The scheduler never performs a check whose result would have to be discarded for query-budget reasons. Deferred monitors remain due and are retried by the next cron invocation.
+
+After legacy catch-up, the admission ceiling is two steady healthy checks per minute. On each five-minute catch-up batch, admission allows one healthy check, and a worst-case alert transition is still guaranteed one slot; intervening minutes regain the two-check allowance. The conservative steady estimate includes a hidden claimed-DOWN recovery repair, so that crash-recovery state cannot push an invocation past D1's 50-query limit.
+
+Both public status route shapes call `PUBLIC_STATUS_RATE_LIMITER` before D1. The configured four-request/minute key combines visitor and slug and is local to a Cloudflare location. After the slug and password or monitor membership are validated, an atomic D1 UTC-day ledger reserves conservative read units against a four-million-row public allocation, preserving at least one million Free-plan reads for monitoring and authenticated operations. Nonexistent slugs and failed unlocks cannot consume that allocation. Frozen-day cache misses, selected-monitor incident candidates, incident fan-out, and at most 20 updates for each of 20 incidents reserve additional units before querying. Candidate feeds above 20,000 links fail explicitly without scanning; that permanent history-limit response is distinct from a daily budget reset. Summary and detail reads reuse their already-loaded monitor rows; shared UTC labels are computed once per response. Protected pages perform PBKDF2 only on unlock, then verify a ten-minute slug- and password-version-scoped HMAC access token for live polls.

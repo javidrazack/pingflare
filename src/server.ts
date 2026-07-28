@@ -24,7 +24,7 @@ import backupRoutes from './routes/backup'
 import eventsRoutes from './routes/events'
 import agentRoutes from './routes/agent'
 
-function createLocalLoginRateLimiter(): RateLimit {
+function createLocalRateLimiter(limit: number): RateLimit {
   const attempts = new Map<string, { count: number; resetAt: number }>()
   return {
     async limit({ key }) {
@@ -35,7 +35,7 @@ function createLocalLoginRateLimiter(): RateLimit {
         return { success: true }
       }
       current.count += 1
-      return { success: current.count <= 5 }
+      return { success: current.count <= limit }
     },
   }
 }
@@ -55,7 +55,8 @@ async function main() {
 
   const env: Env = {
     DB: d1,
-    LOGIN_RATE_LIMITER: createLocalLoginRateLimiter(),
+    LOGIN_RATE_LIMITER: createLocalRateLimiter(5),
+    PUBLIC_STATUS_RATE_LIMITER: createLocalRateLimiter(4),
     CHECK_ANALYTICS: createNoopAnalyticsDataset(),
     API_ANALYTICS: createNoopAnalyticsDataset(),
     PINGFLARE_INSTANCE_ID: process.env.PINGFLARE_INSTANCE_ID ?? 'docker',
@@ -106,8 +107,8 @@ async function main() {
   app.get('/api/health', (c) => c.json({ ok: true, ts: Date.now() }))
 
   app.post('/api/cron/run', requireAuth, async (c) => {
-    await runCron(c.env)
-    return c.json({ ok: true, triggeredAt: Date.now() })
+    const result = await runCron(c.env)
+    return c.json({ ok: true, triggeredAt: Date.now(), ...result })
   })
 
   const staticRoot = path.join(process.cwd(), 'frontend', 'build')

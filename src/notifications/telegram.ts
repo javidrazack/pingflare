@@ -13,6 +13,7 @@ export async function sendTelegram(
   config: Record<string, string>,
   payload: NotificationPayload,
   locale: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const icon = payload.status === 'up' ? '✅' : '🔴'
   const label = typeLabel(payload.type, locale)
@@ -26,6 +27,7 @@ export async function sendTelegram(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: config.chatId, text, parse_mode: 'HTML' }),
+    signal,
   })
 
   await assertResponseOk(res, 'Telegram API')

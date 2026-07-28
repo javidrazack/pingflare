@@ -35,12 +35,16 @@ class SmtpConnection {
   private encoder = new TextEncoder()
   private buf = ''
 
-  constructor(socket: { readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> }) {
+  constructor(
+    socket: { readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> },
+    private readonly signal?: AbortSignal,
+  ) {
     this.reader = socket.readable.getReader()
     this.writer = socket.writable.getWriter()
   }
 
   async readResponse(): Promise<number> {
+    this.signal?.throwIfAborted()
     while (true) {
       const idx = this.buf.indexOf('\r\n')
       if (idx !== -1) {
@@ -51,18 +55,23 @@ class SmtpConnection {
         continue
       }
       const { done, value } = await this.reader.read()
-      if (done) throw new Error('SMTP: connection closed unexpectedly')
+      if (done) {
+        this.signal?.throwIfAborted()
+        throw new Error('SMTP: connection closed unexpectedly')
+      }
       this.buf += this.decoder.decode(value, { stream: true })
     }
   }
 
   async cmd(command: string, expect: number): Promise<void> {
+    this.signal?.throwIfAborted()
     await this.writer.write(this.encoder.encode(command + '\r\n'))
     const code = await this.readResponse()
     if (code !== expect) throw new Error(`SMTP: expected ${expect}, got ${code} (${command.split(' ')[0]})`)
   }
 
   async sendData(message: string): Promise<void> {
+    this.signal?.throwIfAborted()
     await this.writer.write(this.encoder.encode('DATA\r\n'))
     const code = await this.readResponse()
     if (code !== 354) throw new Error(`SMTP: expected 354 for DATA, got ${code}`)
@@ -82,7 +91,9 @@ export async function sendEmail(
   config: Record<string, string>,
   payload: NotificationPayload,
   locale: string,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted()
   const { host, port, user, password, from, to } = config
   const smtpPort = parseInt(port ?? '587', 10)
   const implicitTLS = smtpPort === 465
@@ -118,31 +129,44 @@ export async function sendEmail(
     { hostname: host, port: smtpPort },
     { secureTransport: implicitTLS ? 'on' : 'starttls', allowHalfOpen: false },
   )
-  let conn = new SmtpConnection(socket)
+  let conn = new SmtpConnection(socket, signal)
+  const closeOnAbort = () => {
+    void socket.close().catch(() => {})
+  }
+  signal?.addEventListener('abort', closeOnAbort, { once: true })
 
-  await conn.readResponse()
+  try {
+    await conn.readResponse()
 
-  await conn.cmd('EHLO pingflare', 250)
-
-  if (!implicitTLS) {
-    await conn.cmd('STARTTLS', 220)
-    conn.release()
-    socket = socket.startTls()
-    conn = new SmtpConnection(socket)
     await conn.cmd('EHLO pingflare', 250)
+
+    if (!implicitTLS) {
+      await conn.cmd('STARTTLS', 220)
+      conn.release()
+      socket = socket.startTls()
+      conn = new SmtpConnection(socket, signal)
+      await conn.cmd('EHLO pingflare', 250)
+    }
+
+    await conn.cmd('AUTH LOGIN', 334)
+    await conn.cmd(utf8ToBase64(user), 334)
+    await conn.cmd(utf8ToBase64(password), 235)
+
+    await conn.cmd(`MAIL FROM:<${sender}>`, 250)
+    for (const rcpt of recipients) {
+      await conn.cmd(`RCPT TO:<${rcpt}>`, 250)
+    }
+
+    await conn.sendData(message)
+
+    await conn.cmd('QUIT', 221)
+  } finally {
+    signal?.removeEventListener('abort', closeOnAbort)
+    try {
+      conn.release()
+    } catch {
+      // The stream may already have released its lock during STARTTLS.
+    }
+    await socket.close().catch(() => {})
   }
-
-  await conn.cmd('AUTH LOGIN', 334)
-  await conn.cmd(utf8ToBase64(user), 334)
-  await conn.cmd(utf8ToBase64(password), 235)
-
-  await conn.cmd(`MAIL FROM:<${sender}>`, 250)
-  for (const rcpt of recipients) {
-    await conn.cmd(`RCPT TO:<${rcpt}>`, 250)
-  }
-
-  await conn.sendData(message)
-
-  await conn.cmd('QUIT', 221)
-  socket.close()
 }
