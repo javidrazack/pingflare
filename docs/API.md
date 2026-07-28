@@ -23,8 +23,9 @@ Obtain a token by calling `POST /api/auth/login`
 | GET | `/api/monitors/:id` | Get a monitor |
 | PUT | `/api/monitors/:id` | Update a monitor |
 | DELETE | `/api/monitors/:id` | Delete a monitor |
-| GET | `/api/monitors/:id/logs` | Status logs, supports `?hours=24&limit=500` |
+| GET | `/api/monitors/:id/logs` | Sparse transition/error/sample logs, supports `?hours=24&limit=500` |
 | GET | `/api/monitors/:id/incidents` | Downtime incidents |
+| GET | `/api/monitors/:id/analytics` | Consolidated exact 1/7/30/90-day uptime, daily history, count, and response average |
 | GET | `/api/monitors/:id/uptime` | Uptime percentage, supports `?days=90` |
 | GET | `/api/monitors/:id/daily` | Per-day uptime breakdown, supports `?days=90` |
 | GET | `/api/monitors/uptime-summary` | Batched uptime percentages, supports `?days=30` |
@@ -32,9 +33,11 @@ Obtain a token by calling `POST /api/auth/login`
 | GET | `/api/monitors/:id/heartbeat-token` | Get heartbeat token |
 | POST | `/api/monitors/:id/heartbeat-token/regenerate` | Rotate heartbeat token |
 | GET | `/api/monitors/:id/channels` | Notification channel IDs linked to the monitor |
-| POST | `/api/monitors/:id/reset-stats` | Clear logs/incidents and reset alert state |
+| POST | `/api/monitors/:id/reset-stats` | Clear rollups/logs/incidents, advance cache revision, and reset alert state |
 | GET/POST | `/api/monitors/:id/maintenance` | List or create maintenance windows |
 | DELETE | `/api/monitors/:id/maintenance/:maintenanceId` | Delete a maintenance window |
+
+Uptime windows use completed and current UTC calendar days. The one-day value is the current UTC day, not a rolling 24-hour window.
 
 ---
 

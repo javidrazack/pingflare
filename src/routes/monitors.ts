@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono'
 import { and, asc, count, desc, eq, like, or, type SQL } from 'drizzle-orm'
-import { getDb, monitors, heartbeatTokens, alertState, monitorNotifications, statusLogs, incidents, maintenanceWindows } from '../db'
+import { getDb, monitors, heartbeatTokens, alertState, monitorNotifications, maintenanceWindows } from '../db'
 import { requireAuth } from '../middleware/auth'
 import { encryptField, isEncryptedValue } from '../utils'
 import { readJsonBodyWithLimit, RequestBodyTooLargeError } from '../request'
@@ -166,8 +166,12 @@ router.patch('/bulk', async (c) => {
       body.ids.some((id: unknown) => typeof id !== 'string')) {
     return c.json({ error: 'Select between 1 and 100 monitors' }, 400)
   }
+  const idsJson = JSON.stringify(body.ids)
   if (body.action === 'delete') {
-    await c.env.DB.batch(body.ids.map((id: string) => c.env.DB.prepare('DELETE FROM monitors WHERE id = ?').bind(id)))
+    await c.env.DB.prepare(`
+      DELETE FROM monitors
+      WHERE id IN (SELECT value FROM json_each(?))
+    `).bind(idsJson).run()
     return c.json({ ok: true, affected: body.ids.length })
   }
   if (body.action !== 'pause' && body.action !== 'resume') {
@@ -175,9 +179,10 @@ router.patch('/bulk', async (c) => {
   }
   const active = body.action === 'resume'
   const now = Math.floor(Date.now() / 1000)
-  await c.env.DB.batch(body.ids.map((id: string) =>
-    c.env.DB.prepare('UPDATE monitors SET active = ?, updated_at = ? WHERE id = ?').bind(active ? 1 : 0, now, id)
-  ))
+  await c.env.DB.prepare(`
+    UPDATE monitors SET active = ?, updated_at = ?
+    WHERE id IN (SELECT value FROM json_each(?))
+  `).bind(active ? 1 : 0, now, idsJson).run()
   return c.json({ ok: true, affected: body.ids.length })
 })
 
@@ -390,20 +395,36 @@ router.post('/:id/reset-stats', async (c) => {
   const monitor = await db.query.monitors.findFirst({ where: eq(monitors.id, id) })
   if (!monitor) return c.json({ error: 'Not found' }, 404)
 
-  await db.delete(statusLogs).where(eq(statusLogs.monitorId, id))
-  await db.delete(incidents).where(eq(incidents.monitorId, id))
-  await db.update(alertState).set({
-    consecutiveFailures: 0,
-    consecutiveMissed: 0,
-    alertSentAt: null,
-    consecutiveAlerts: 0,
-    lastReminderAt: null,
-    surgePausedUntil: null,
-  }).where(eq(alertState.monitorId, id))
-  await db.update(monitors).set({
-    lastStatus: 'pending',
-    lastCheckedAt: null,
-  }).where(eq(monitors.id, id))
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM status_logs WHERE monitor_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM monitor_daily_rollups WHERE monitor_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM incidents WHERE monitor_id = ?').bind(id),
+    c.env.DB.prepare(`
+      UPDATE alert_state SET
+        consecutive_failures = 0,
+        consecutive_missed = 0,
+        alert_sent_at = NULL,
+        consecutive_alerts = 0,
+        last_reminder_at = NULL,
+        surge_paused_until = NULL
+      WHERE monitor_id = ?
+    `).bind(id),
+    c.env.DB.prepare(`
+      UPDATE monitors SET
+        last_status = 'pending',
+        last_checked_at = NULL,
+        history_revision = history_revision + 1,
+        stats_day = NULL,
+        day_checks = 0,
+        day_up_count = 0,
+        day_down_count = 0,
+        day_response_count = 0,
+        day_response_sum_ms = 0,
+        day_response_min_ms = NULL,
+        day_response_max_ms = NULL
+      WHERE id = ?
+    `).bind(id),
+  ])
 
   return c.json({ ok: true })
 })

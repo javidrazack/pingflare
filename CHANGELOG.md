@@ -1,5 +1,33 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Analytics Engine telemetry datasets for high-resolution check, agent, and sampled API metrics
+- Exact compact D1 daily rollups with authoritative current-day counters
+- Versioned aggregate caching for completed historical days, with a bounded Docker/Node fallback
+- A consolidated monitor analytics endpoint and detailed storage/telemetry architecture documentation
+- A global scheduler lease that prevents overlapping scheduled and manual runs
+
+### Improved
+- Dashboard current-state polling now runs every 30 seconds, historical polling every five minutes, and both pause in hidden tabs
+- Historical dashboard and public-status queries read compact daily rows instead of scanning minute-level status logs
+- D1 status logs are sparse diagnostic evidence while Analytics Engine receives every high-resolution observation
+- Due monitors and heartbeat state are selected in sets, retention cleanup drains in bounded batches, and healthy checks reset tolerated failure streaks with one conditional write
+- Static assets bypass Worker execution; only API and heartbeat paths run Worker-first
+- Monitor and incident transitions commit before bounded notification delivery; total provider failures retry the initial alert
+- Bulk monitor actions and backup restore use set-based JSON operations to stay below D1's per-invocation query limit
+
+### Reliability
+- Current status, scheduling, alerts, incidents, and exact uptime remain authoritative in D1/SQLite
+- Cache never stores current status, recent logs, or active incidents; complete API responses use `no-store`
+- Analytics Engine and Cache failures fall back without interrupting monitoring
+- Worker request-path schema DDL was removed; deployment applies migrations before publishing code
+
+### Upgrade
+- Apply D1 migrations `0005_flimsy_quicksilver.sql` and `0006_remarkable_johnny_blaze.sql`
+- `npm run deploy` now safely reconciles legacy v1.6 migration-ledger drift, applies pending migrations through the `DB` binding, and then deploys
+
 ## [1.6.0] - 2026-07-27
 
 ### Added

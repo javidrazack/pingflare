@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { Hono } from 'hono'
-import { createTestDb, makeEnv, insertMonitor } from './setup'
+import { createTestDb, makeEnv, insertMonitor, insertCheckObservation } from './setup'
 import publicStatusRouter from '../routes/publicStatus'
-import { statusLogs, statusPages, statusPageMonitors } from '../db/schema'
+import { statusPages, statusPageMonitors } from '../db/schema'
 
 function buildApp(d1: D1Database) {
   const env = makeEnv(d1)
@@ -31,17 +31,12 @@ async function insertPage(db: ReturnType<typeof import('../db').getDb>, slug: st
 
 async function insertLog(
   db: ReturnType<typeof import('../db').getDb>,
+  d1: D1Database,
   monitorId: string,
   status: 'up' | 'down',
   checkedAt: number,
 ) {
-  await db.insert(statusLogs).values({
-    id: crypto.randomUUID(),
-    monitorId,
-    status,
-    checkedAt,
-    message: status,
-  })
+  await insertCheckObservation(db, d1, monitorId, status, checkedAt)
 }
 
 describe('GET /api/public/status/:slug', () => {
@@ -76,9 +71,9 @@ describe('GET /api/public/status/:slug', () => {
 
     const now = nowSecs()
 
-    await insertLog(db, monId, 'up', now - 60)
-    await insertLog(db, monId, 'up', now - 120)
-    await insertLog(db, monId, 'down', now - 180)
+    await insertLog(db, d1, monId, 'up', now - 60)
+    await insertLog(db, d1, monId, 'up', now - 120)
+    await insertLog(db, d1, monId, 'down', now - 180)
 
     const { app, env } = buildApp(d1)
     const res = await getSlug(app, env, 'my-page')
@@ -99,10 +94,10 @@ describe('GET /api/public/status/:slug', () => {
     const now = nowSecs()
     const todayMidnight = now - (now % 86400)
 
-    await insertLog(db, monId, 'up', todayMidnight + 100)
-    await insertLog(db, monId, 'up', todayMidnight + 200)
-    await insertLog(db, monId, 'up', todayMidnight + 300)
-    await insertLog(db, monId, 'down', todayMidnight + 400)
+    await insertLog(db, d1, monId, 'up', todayMidnight + 100)
+    await insertLog(db, d1, monId, 'up', todayMidnight + 200)
+    await insertLog(db, d1, monId, 'up', todayMidnight + 300)
+    await insertLog(db, d1, monId, 'down', todayMidnight + 400)
 
     const { app, env } = buildApp(d1)
     const res = await getSlug(app, env, 'daily-page')
@@ -124,8 +119,7 @@ describe('GET /api/public/status/:slug', () => {
     const { app, env } = buildApp(d1)
     const res = await getSlug(app, env, 'cached-page')
     expect(res.status).toBe(200)
-    expect(res.headers.get('Cache-Control')).toContain('max-age=30')
-    expect(res.headers.get('Cache-Control')).toContain('stale-while-revalidate')
+    expect(res.headers.get('Cache-Control')).toBe('no-store')
   })
 
   it('returns 401 for password-protected page without password', async () => {
@@ -186,7 +180,7 @@ describe('GET /api/public/status/:slug/monitors/:monitorId', () => {
       env,
     )
     expect(res.status).toBe(200)
-    expect(res.headers.get('Cache-Control')).toContain('max-age=30')
+    expect(res.headers.get('Cache-Control')).toBe('no-store')
   })
 
   it('returns 90 daily data points for the monitor', async () => {

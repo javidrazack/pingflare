@@ -48,6 +48,15 @@ CREATE TABLE IF NOT EXISTS monitors (
   dns_record_type text DEFAULT 'A',
   dns_resolver_url text,
   dns_expected_ip text,
+  history_revision integer DEFAULT 1 NOT NULL,
+  stats_day integer,
+  day_checks integer DEFAULT 0 NOT NULL,
+  day_up_count integer DEFAULT 0 NOT NULL,
+  day_down_count integer DEFAULT 0 NOT NULL,
+  day_response_count integer DEFAULT 0 NOT NULL,
+  day_response_sum_ms integer DEFAULT 0 NOT NULL,
+  day_response_min_ms integer,
+  day_response_max_ms integer,
   created_at integer DEFAULT (unixepoch()) NOT NULL,
   updated_at integer DEFAULT (unixepoch()) NOT NULL
 );
@@ -59,7 +68,34 @@ CREATE TABLE IF NOT EXISTS status_logs (
   message text,
   response_time_ms integer,
   checked_at integer NOT NULL,
+  colo text,
+  country_code text,
+  origin_ip text,
+  source text,
   FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON UPDATE no action ON DELETE cascade
+);
+
+CREATE TABLE IF NOT EXISTS monitor_daily_rollups (
+  monitor_id text NOT NULL,
+  day integer NOT NULL,
+  checks integer DEFAULT 0 NOT NULL,
+  up_count integer DEFAULT 0 NOT NULL,
+  down_count integer DEFAULT 0 NOT NULL,
+  response_count integer DEFAULT 0 NOT NULL,
+  response_sum_ms integer DEFAULT 0 NOT NULL,
+  response_min_ms integer,
+  response_max_ms integer,
+  PRIMARY KEY(monitor_id, day),
+  FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON UPDATE no action ON DELETE cascade
+);
+
+CREATE INDEX IF NOT EXISTS idx_monitor_daily_day ON monitor_daily_rollups (day);
+
+CREATE TABLE IF NOT EXISTS scheduler_leases (
+  name text PRIMARY KEY NOT NULL,
+  holder text NOT NULL,
+  lease_until integer NOT NULL,
+  updated_at integer NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS incidents (
@@ -209,6 +245,46 @@ CREATE TABLE IF NOT EXISTS maintenance_windows (
   reason text,
   FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON UPDATE no action ON DELETE cascade
 );
+
+CREATE INDEX IF NOT EXISTS idx_incident_monitors_monitor
+  ON incident_monitors (monitor_id, incident_id);
+CREATE INDEX IF NOT EXISTS idx_incident_report_events_event
+  ON incident_report_events (event_id, incident_id);
+CREATE INDEX IF NOT EXISTS idx_incident_updates_incident_created
+  ON incident_updates (incident_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_incidents_monitor_started
+  ON incidents (monitor_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_incidents_monitor_resolved
+  ON incidents (monitor_id, resolved_at);
+CREATE INDEX IF NOT EXISTS idx_maintenance_monitor_window
+  ON maintenance_windows (monitor_id, start_at, end_at);
+`
+
+const LEGACY_ROLLUP_BACKFILL_SQL = `
+  INSERT OR IGNORE INTO monitor_daily_rollups (
+    monitor_id,
+    day,
+    checks,
+    up_count,
+    down_count,
+    response_count,
+    response_sum_ms,
+    response_min_ms,
+    response_max_ms
+  )
+  SELECT
+    monitor_id,
+    checked_at - (checked_at % 86400),
+    COUNT(*),
+    SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END),
+    SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END),
+    SUM(CASE WHEN response_time_ms IS NOT NULL THEN 1 ELSE 0 END),
+    COALESCE(SUM(response_time_ms), 0),
+    MIN(response_time_ms),
+    MAX(response_time_ms)
+  FROM status_logs
+  WHERE source IS NULL
+  GROUP BY monitor_id, checked_at - (checked_at % 86400)
 `
 
 export async function ensureSchema(d1: D1Database): Promise<void> {
@@ -240,6 +316,16 @@ export async function ensureSchema(d1: D1Database): Promise<void> {
         `ALTER TABLE monitors ADD COLUMN ram_threshold integer`,
         `ALTER TABLE monitors ADD COLUMN disk_threshold integer`,
         `ALTER TABLE monitors ADD COLUMN last_metrics text`,
+        `ALTER TABLE monitors ADD COLUMN history_revision integer DEFAULT 1 NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN stats_day integer`,
+        `ALTER TABLE monitors ADD COLUMN day_checks integer DEFAULT 0 NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN day_up_count integer DEFAULT 0 NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN day_down_count integer DEFAULT 0 NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN day_response_count integer DEFAULT 0 NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN day_response_sum_ms integer DEFAULT 0 NOT NULL`,
+        `ALTER TABLE monitors ADD COLUMN day_response_min_ms integer`,
+        `ALTER TABLE monitors ADD COLUMN day_response_max_ms integer`,
+        `ALTER TABLE status_logs ADD COLUMN source text`,
         `ALTER TABLE status_pages ADD COLUMN logo_url text`,
         `ALTER TABLE status_pages ADD COLUMN brand_color text DEFAULT '#B45309' NOT NULL`,
         `ALTER TABLE status_pages ADD COLUMN theme text DEFAULT 'system' NOT NULL`,
@@ -259,6 +345,23 @@ export async function ensureSchema(d1: D1Database): Promise<void> {
           if (!String(error).toLowerCase().includes('duplicate column')) throw error
         }
       }
+      const backfillMarker = await d1.prepare(
+        `SELECT value FROM settings WHERE key = '_schema_legacy_rollup_backfill_v1'`,
+      ).first<{ value: string }>()
+      if (backfillMarker?.value !== '1') {
+        await d1.prepare(LEGACY_ROLLUP_BACKFILL_SQL).run()
+        await d1.prepare(`
+          INSERT INTO settings (key, value)
+          VALUES ('_schema_legacy_rollup_backfill_v1', '1')
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        `).run()
+      }
+      await d1.prepare(`UPDATE status_logs SET source = 'legacy' WHERE source IS NULL`).run()
+      await d1.prepare(`
+        INSERT INTO settings (key, value)
+        VALUES ('_schema_legacy_gap_catchup_v1', '1')
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run()
       migrated = true
     })()
   }

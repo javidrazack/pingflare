@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { Hono } from 'hono'
-import { createTestDb, makeEnv, makeAuthHeader, insertMonitor } from './setup'
+import { createTestDb, makeEnv, makeAuthHeader, insertMonitor, insertCheckObservation } from './setup'
 import historyRouter from '../routes/history'
-import { statusLogs, incidents } from '../db/schema'
+import { incidents, monitors } from '../db/schema'
+import { clearAggregateMemoryCache } from '../services/response-cache'
+import { eq } from 'drizzle-orm'
 
 function buildApp(d1: D1Database) {
   const env = makeEnv(d1)
@@ -22,19 +24,13 @@ function nowSecs() { return Math.floor(Date.now() / 1000) }
 
 async function insertLog(
   db: ReturnType<typeof import('../db').getDb>,
+  d1: D1Database,
   monitorId: string,
   status: 'up' | 'down',
   checkedAt: number,
   responseTimeMs = 100,
 ) {
-  await db.insert(statusLogs).values({
-    id: crypto.randomUUID(),
-    monitorId,
-    status,
-    message: status === 'up' ? 'OK' : 'Error',
-    responseTimeMs,
-    checkedAt,
-  })
+  await insertCheckObservation(db, d1, monitorId, status, checkedAt, responseTimeMs)
 }
 
 describe('/api/monitors/:id/logs', () => {
@@ -42,8 +38,25 @@ describe('/api/monitors/:id/logs', () => {
   let auth: string
 
   beforeEach(async () => {
+    clearAggregateMemoryCache()
     ctx = await createTestDb()
     auth = await makeAuthHeader()
+  })
+
+  it('caches only versioned completed history fragments', async () => {
+    const { db, d1 } = ctx
+    const id = await insertMonitor(db)
+    await insertLog(db, d1, id, 'up', nowSecs() - 10 * 86400)
+    const { app, env } = buildApp(d1)
+
+    const first = await get(app, env, `/api/monitors/${id}/analytics`, auth)
+    const second = await get(app, env, `/api/monitors/${id}/analytics`, auth)
+    expect(first.headers.get('X-Pingflare-Aggregate-Cache')).toBe('MISS')
+    expect(second.headers.get('X-Pingflare-Aggregate-Cache')).toBe('HIT')
+
+    await db.update(monitors).set({ historyRevision: 2 }).where(eq(monitors.id, id))
+    const afterRevision = await get(app, env, `/api/monitors/${id}/analytics`, auth)
+    expect(afterRevision.headers.get('X-Pingflare-Aggregate-Cache')).toBe('MISS')
   })
 
   it('returns 401 without auth', async () => {
@@ -56,9 +69,9 @@ describe('/api/monitors/:id/logs', () => {
     const { db, d1 } = ctx
     const id = await insertMonitor(db)
     const now = nowSecs()
-    await insertLog(db, id, 'up', now - 60)
-    await insertLog(db, id, 'down', now - 30)
-    await insertLog(db, id, 'up', now)
+    await insertLog(db, d1, id, 'up', now - 60)
+    await insertLog(db, d1, id, 'down', now - 30)
+    await insertLog(db, d1, id, 'up', now)
 
     const { app, env } = buildApp(d1)
     const res = await get(app, env, `/api/monitors/${id}/logs`, auth)
@@ -72,8 +85,8 @@ describe('/api/monitors/:id/logs', () => {
     const { db, d1 } = ctx
     const id = await insertMonitor(db)
     const now = nowSecs()
-    await insertLog(db, id, 'up', now - 7200)
-    await insertLog(db, id, 'up', now - 1800)
+    await insertLog(db, d1, id, 'up', now - 7200)
+    await insertLog(db, d1, id, 'up', now - 1800)
 
     const { app, env } = buildApp(d1)
     const res = await get(app, env, `/api/monitors/${id}/logs?hours=1`, auth)
@@ -105,10 +118,10 @@ describe('/api/monitors/:id/uptime', () => {
     const { db, d1 } = ctx
     const id = await insertMonitor(db)
     const now = nowSecs()
-    await insertLog(db, id, 'up', now - 30)
-    await insertLog(db, id, 'up', now - 60)
-    await insertLog(db, id, 'up', now - 90)
-    await insertLog(db, id, 'down', now - 120)
+    await insertLog(db, d1, id, 'up', now - 30)
+    await insertLog(db, d1, id, 'up', now - 60)
+    await insertLog(db, d1, id, 'up', now - 90)
+    await insertLog(db, d1, id, 'down', now - 120)
 
     const { app, env } = buildApp(d1)
     const res = await get(app, env, `/api/monitors/${id}/uptime`, auth)
@@ -122,8 +135,8 @@ describe('/api/monitors/:id/uptime', () => {
     const { db, d1 } = ctx
     const id = await insertMonitor(db)
     const now = nowSecs()
-    await insertLog(db, id, 'up', now - 86400 * 5)
-    await insertLog(db, id, 'down', now - 86400 * 10)
+    await insertLog(db, d1, id, 'up', now - 86400 * 5)
+    await insertLog(db, d1, id, 'down', now - 86400 * 10)
 
     const { app, env } = buildApp(d1)
     const res = await get(app, env, `/api/monitors/${id}/uptime?days=7`, auth)
@@ -165,10 +178,10 @@ describe('/api/monitors/:id/daily', () => {
     const now = nowSecs()
     const todayMidnight = now - (now % 86400)
 
-    await insertLog(db, id, 'up', todayMidnight + 100)
-    await insertLog(db, id, 'up', todayMidnight + 200)
-    await insertLog(db, id, 'up', todayMidnight + 300)
-    await insertLog(db, id, 'down', todayMidnight + 400)
+    await insertLog(db, d1, id, 'up', todayMidnight + 100)
+    await insertLog(db, d1, id, 'up', todayMidnight + 200)
+    await insertLog(db, d1, id, 'up', todayMidnight + 300)
+    await insertLog(db, d1, id, 'down', todayMidnight + 400)
 
     const { app, env } = buildApp(d1)
     const res = await get(app, env, `/api/monitors/${id}/daily`, auth)

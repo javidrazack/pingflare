@@ -4,7 +4,9 @@ import { ensureSchema, resetMigratedFlag } from '../db/migrate'
 import { getDb } from '../db'
 import { monitors, settings } from '../db/schema'
 import type { Env } from '../index'
+import { persistCheckObservations } from '../services/check-storage'
 import { SignJWT } from 'jose'
+import { eq } from 'drizzle-orm'
 
 export const JWT_SECRET = 'test-secret-key-exactly-32chars!!'
 export const ENCRYPTION_KEY = 'test-encryption-key-32chars-xact'
@@ -25,10 +27,14 @@ export async function createTestDb() {
 }
 
 export function makeEnv(d1: D1Database): Env {
+  const analytics: AnalyticsEngineDataset = { writeDataPoint() {} }
   return {
     DB: d1,
-    ASSETS: undefined as unknown as Fetcher,
     LOGIN_RATE_LIMITER: { limit: async () => ({ success: true }) },
+    CHECK_ANALYTICS: analytics,
+    API_ANALYTICS: analytics,
+    PINGFLARE_INSTANCE_ID: 'test',
+    API_ANALYTICS_SAMPLE_RATE: '0',
     ADMIN_USER: 'admin',
     ADMIN_PASS: 'testpass',
     JWT_SECRET,
@@ -61,4 +67,29 @@ export async function insertMonitor(
     ...overrides,
   })
   return id
+}
+
+/** Persist one observation through the same counter/rollup path used in production. */
+export async function insertCheckObservation(
+  db: ReturnType<typeof getDb>,
+  d1: D1Database,
+  monitorId: string,
+  status: 'up' | 'down',
+  checkedAt: number,
+  responseTimeMs: number | null = 100,
+): Promise<void> {
+  const [monitor] = await db.select()
+    .from(monitors)
+    .where(eq(monitors.id, monitorId))
+    .limit(1)
+  if (!monitor) throw new Error(`Monitor ${monitorId} not found`)
+
+  await persistCheckObservations(makeEnv(d1), [{
+    monitor,
+    status,
+    message: status === 'up' ? 'OK' : 'Error',
+    responseTimeMs,
+    checkedAt,
+    source: 'cron',
+  }])
 }

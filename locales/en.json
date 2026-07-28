@@ -111,7 +111,7 @@
   "monitor.pendingHint": "This monitor has never been checked. The cron runs every minute in production. In dev, click Check now above or run:",
   "monitor.uptime90d": "90-day uptime",
   "monitor.overallUptime": "Overall uptime",
-  "monitor.last24h": "Last 24h",
+  "monitor.last24h": "Today (UTC)",
   "monitor.last7d": "Last 7 days",
   "monitor.last30d": "Last 30 days",
   "monitor.last90d": "Last 90 days",

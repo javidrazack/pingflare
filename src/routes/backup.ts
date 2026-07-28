@@ -66,6 +66,22 @@ function parseRecords(value: unknown, field: string): JsonObject[] {
   return value
 }
 
+function prepareJsonInsert(
+  d1: D1Database,
+  table: string,
+  columns: string[],
+  rows: JsonObject[],
+): D1PreparedStatement {
+  const selectedColumns = columns
+    .map((column) => `json_extract(value, '$.${column}')`)
+    .join(', ')
+  return d1.prepare(`
+    INSERT INTO ${table} (${columns.join(', ')})
+    SELECT ${selectedColumns}
+    FROM json_each(?)
+  `).bind(JSON.stringify(rows))
+}
+
 router.get('/', async (c) => {
   const db = getDb(c.env.DB)
 
@@ -171,153 +187,184 @@ router.post('/restore', async (c) => {
     }
 
     const now = Math.floor(Date.now() / 1000)
+    const restoredHistoryRevision = Date.now()
+
+    const settingsObj = body.settings as JsonObject
+    const entries = Object.entries(settingsObj)
+    if (!entries.some(([key]) => key === 'retention_days')) entries.push(['retention_days', '90'])
+    const restoredSettings = entries.map(([key, value]) => ({
+      key,
+      value: String(value),
+    }))
+    const restoredChannels = channelRows.map((channel) => ({
+      id: requiredString(channel, 'id'),
+      name: requiredString(channel, 'name'),
+      type: requiredString(channel, 'type'),
+      config: requiredString(channel, 'config'),
+      active: channel.active === false ? 0 : 1,
+      is_default: channel.isDefault === true ? 1 : 0,
+      created_at: integerOr(channel.createdAt, now),
+    }))
+    const restoredMonitors: JsonObject[] = []
+    const restoredAlertStates: JsonObject[] = []
+    const restoredHeartbeatTokens: JsonObject[] = []
+    const restoredMonitorNotifications: JsonObject[] = []
+
+    for (const monitor of monitorRows) {
+      const id = requiredString(monitor, 'id')
+      const type = requiredString(monitor, 'type')
+      restoredMonitors.push({
+        id,
+        name: requiredString(monitor, 'name'),
+        type,
+        tags: typeof monitor.tags === 'string' ? monitor.tags : '[]',
+        interval: integerOr(monitor.interval, 60),
+        active: monitor.active === false ? 0 : 1,
+        last_checked_at: null,
+        last_status: 'pending',
+        reminder_interval_hours: optionalNumber(monitor.reminderIntervalHours),
+        tolerance_failures: integerOr(monitor.toleranceFailures, 1),
+        url: optionalString(monitor.url),
+        method: typeof monitor.method === 'string' ? monitor.method : 'GET',
+        body: optionalString(monitor.body),
+        headers: typeof monitor.headers === 'string' ? monitor.headers : '{}',
+        expected_status: integerOr(monitor.expectedStatus, 200),
+        follow_redirects: monitor.followRedirects === false ? 0 : 1,
+        timeout: integerOr(monitor.timeout, 30),
+        ip_version: typeof monitor.ipVersion === 'string' ? monitor.ipVersion : 'auto',
+        auth_type: typeof monitor.authType === 'string' ? monitor.authType : 'none',
+        auth_username: optionalString(monitor.authUsername),
+        auth_password: optionalString(monitor.authPassword),
+        auth_token: optionalString(monitor.authToken),
+        heartbeat_interval: optionalNumber(monitor.heartbeatInterval),
+        heartbeat_grace: integerOr(monitor.heartbeatGrace, 30),
+        tolerance_missed: integerOr(monitor.toleranceMissed, 1),
+        surge_protection_limit: optionalNumber(monitor.surgeProtectionLimit),
+        ssl_check_enabled: monitor.sslCheckEnabled === true ? 1 : 0,
+        ssl_status: 'unknown',
+        cache_booster: monitor.cacheBooster === true ? 1 : 0,
+        json_path: optionalString(monitor.jsonPath),
+        expected_value: optionalString(monitor.expectedValue),
+        cpu_threshold: optionalNumber(monitor.cpuThreshold),
+        ram_threshold: optionalNumber(monitor.ramThreshold),
+        disk_threshold: optionalNumber(monitor.diskThreshold),
+        last_metrics: optionalString(monitor.lastMetrics),
+        dns_hostname: optionalString(monitor.dnsHostname),
+        dns_record_type: typeof monitor.dnsRecordType === 'string' ? monitor.dnsRecordType : 'A',
+        dns_resolver_url: optionalString(monitor.dnsResolverUrl),
+        dns_expected_ip: optionalString(monitor.dnsExpectedIp),
+        history_revision: restoredHistoryRevision,
+        created_at: integerOr(monitor.createdAt, now),
+        updated_at: now,
+      })
+      restoredAlertStates.push({ monitor_id: id })
+      if (type === 'heartbeat' || type === 'agent') {
+        restoredHeartbeatTokens.push({ monitor_id: id, token: crypto.randomUUID() })
+      }
+      for (const channelId of Array.isArray(monitor.channelIds) ? monitor.channelIds : []) {
+        restoredMonitorNotifications.push({
+          monitor_id: id,
+          channel_id: channelId as string,
+        })
+      }
+    }
+
+    const restoredPages: JsonObject[] = []
+    const restoredPageMonitors: JsonObject[] = []
+    for (const page of pageRows) {
+      const id = requiredString(page, 'id')
+      restoredPages.push({
+        id,
+        name: requiredString(page, 'name'),
+        slug: requiredString(page, 'slug'),
+        description: optionalString(page.description),
+        password_hash: optionalString(page.passwordHash),
+        show_all_monitors: page.showAllMonitors === true ? 1 : 0,
+        logo_url: optionalString(page.logoUrl),
+        brand_color: typeof page.brandColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(page.brandColor)
+          ? page.brandColor.toUpperCase()
+          : '#B45309',
+        theme: page.theme === 'light' || page.theme === 'dark' ? page.theme : 'system',
+        show_response_time: page.showResponseTime === false ? 0 : 1,
+        show_uptime: page.showUptime === false ? 0 : 1,
+        history_days: [7, 30, 60, 90].includes(integerOr(page.historyDays, 90))
+          ? integerOr(page.historyDays, 90)
+          : 90,
+        seo_title: optionalString(page.seoTitle),
+        seo_description: optionalString(page.seoDescription),
+        created_at: integerOr(page.createdAt, now),
+      })
+      const pageMonitorIds = Array.isArray(page.monitorIds) ? page.monitorIds : []
+      pageMonitorIds.forEach((monitorId, sortOrder) => {
+        restoredPageMonitors.push({
+          page_id: id,
+          monitor_id: monitorId as string,
+          sort_order: sortOrder,
+        })
+      })
+    }
+
+    const restoredMaintenanceWindows = maintenanceRows.map((window) => ({
+      id: requiredString(window, 'id'),
+      monitor_id: requiredString(window, 'monitorId'),
+      start_at: optionalNumber(window.startAt),
+      end_at: optionalNumber(window.endAt),
+      reason: optionalString(window.reason),
+    }))
+
+    // D1 counts every statement inside batch() toward its 50-query invocation
+    // limit. Loading each table from one JSON parameter keeps a 5,000-record
+    // restore to a fixed, small number of statements.
     const statements: D1PreparedStatement[] = [
       c.env.DB.prepare('DELETE FROM monitors'),
       c.env.DB.prepare('DELETE FROM notification_channels'),
       c.env.DB.prepare('DELETE FROM status_pages'),
       c.env.DB.prepare('DELETE FROM settings'),
+      prepareJsonInsert(c.env.DB, 'settings', ['key', 'value'], restoredSettings),
+      prepareJsonInsert(
+        c.env.DB,
+        'notification_channels',
+        ['id', 'name', 'type', 'config', 'active', 'is_default', 'created_at'],
+        restoredChannels,
+      ),
+      prepareJsonInsert(c.env.DB, 'monitors', [
+        'id', 'name', 'type', 'tags', 'interval', 'active', 'last_checked_at', 'last_status',
+        'reminder_interval_hours', 'tolerance_failures', 'url', 'method', 'body', 'headers',
+        'expected_status', 'follow_redirects', 'timeout', 'ip_version', 'auth_type',
+        'auth_username', 'auth_password', 'auth_token', 'heartbeat_interval', 'heartbeat_grace',
+        'tolerance_missed', 'surge_protection_limit', 'ssl_check_enabled', 'ssl_status',
+        'cache_booster', 'json_path', 'expected_value', 'cpu_threshold', 'ram_threshold',
+        'disk_threshold', 'last_metrics', 'dns_hostname', 'dns_record_type', 'dns_resolver_url',
+        'dns_expected_ip', 'history_revision', 'created_at', 'updated_at',
+      ], restoredMonitors),
+      prepareJsonInsert(c.env.DB, 'alert_state', ['monitor_id'], restoredAlertStates),
+      prepareJsonInsert(
+        c.env.DB,
+        'heartbeat_tokens',
+        ['monitor_id', 'token'],
+        restoredHeartbeatTokens,
+      ),
+      prepareJsonInsert(
+        c.env.DB,
+        'monitor_notifications',
+        ['monitor_id', 'channel_id'],
+        restoredMonitorNotifications,
+      ),
+      prepareJsonInsert(c.env.DB, 'status_pages', [
+        'id', 'name', 'slug', 'description', 'password_hash', 'show_all_monitors',
+        'logo_url', 'brand_color', 'theme', 'show_response_time', 'show_uptime',
+        'history_days', 'seo_title', 'seo_description', 'created_at',
+      ], restoredPages),
+      prepareJsonInsert(
+        c.env.DB,
+        'status_page_monitors',
+        ['page_id', 'monitor_id', 'sort_order'],
+        restoredPageMonitors,
+      ),
+      prepareJsonInsert(c.env.DB, 'maintenance_windows', [
+        'id', 'monitor_id', 'start_at', 'end_at', 'reason',
+      ], restoredMaintenanceWindows),
     ]
-
-    const settingsObj = body.settings as JsonObject
-    const entries = Object.entries(settingsObj)
-    if (!entries.some(([key]) => key === 'retention_days')) entries.push(['retention_days', '90'])
-    for (const [key, value] of entries) {
-      statements.push(c.env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').bind(key, String(value)))
-    }
-
-    for (const channel of channelRows) {
-      statements.push(c.env.DB.prepare(`
-        INSERT INTO notification_channels (id, name, type, config, active, is_default, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        requiredString(channel, 'id'),
-        requiredString(channel, 'name'),
-        requiredString(channel, 'type'),
-        requiredString(channel, 'config'),
-        channel.active === false ? 0 : 1,
-        channel.isDefault === true ? 1 : 0,
-        integerOr(channel.createdAt, now),
-      ))
-    }
-
-    for (const monitor of monitorRows) {
-      const id = requiredString(monitor, 'id')
-      const type = requiredString(monitor, 'type')
-      statements.push(c.env.DB.prepare(`
-        INSERT INTO monitors (
-          id, name, type, tags, interval, active, last_checked_at, last_status,
-          reminder_interval_hours, tolerance_failures, url, method, body, headers,
-          expected_status, follow_redirects, timeout, ip_version, auth_type,
-          auth_username, auth_password, auth_token, heartbeat_interval, heartbeat_grace,
-          tolerance_missed, surge_protection_limit, ssl_check_enabled, ssl_status,
-          cache_booster, json_path, expected_value, cpu_threshold, ram_threshold,
-          disk_threshold, last_metrics, dns_hostname, dns_record_type, dns_resolver_url,
-          dns_expected_ip, created_at, updated_at
-        ) VALUES (${Array(41).fill('?').join(', ')})
-      `).bind(
-        id,
-        requiredString(monitor, 'name'),
-        type,
-        typeof monitor.tags === 'string' ? monitor.tags : '[]',
-        integerOr(monitor.interval, 60),
-        monitor.active === false ? 0 : 1,
-        null,
-        'pending',
-        optionalNumber(monitor.reminderIntervalHours),
-        integerOr(monitor.toleranceFailures, 1),
-        optionalString(monitor.url),
-        typeof monitor.method === 'string' ? monitor.method : 'GET',
-        optionalString(monitor.body),
-        typeof monitor.headers === 'string' ? monitor.headers : '{}',
-        integerOr(monitor.expectedStatus, 200),
-        monitor.followRedirects === false ? 0 : 1,
-        integerOr(monitor.timeout, 30),
-        typeof monitor.ipVersion === 'string' ? monitor.ipVersion : 'auto',
-        typeof monitor.authType === 'string' ? monitor.authType : 'none',
-        optionalString(monitor.authUsername),
-        optionalString(monitor.authPassword),
-        optionalString(monitor.authToken),
-        optionalNumber(monitor.heartbeatInterval),
-        integerOr(monitor.heartbeatGrace, 30),
-        integerOr(monitor.toleranceMissed, 1),
-        optionalNumber(monitor.surgeProtectionLimit),
-        monitor.sslCheckEnabled === true ? 1 : 0,
-        'unknown',
-        monitor.cacheBooster === true ? 1 : 0,
-        optionalString(monitor.jsonPath),
-        optionalString(monitor.expectedValue),
-        optionalNumber(monitor.cpuThreshold),
-        optionalNumber(monitor.ramThreshold),
-        optionalNumber(monitor.diskThreshold),
-        optionalString(monitor.lastMetrics),
-        optionalString(monitor.dnsHostname),
-        typeof monitor.dnsRecordType === 'string' ? monitor.dnsRecordType : 'A',
-        optionalString(monitor.dnsResolverUrl),
-        optionalString(monitor.dnsExpectedIp),
-        integerOr(monitor.createdAt, now),
-        now,
-      ))
-      statements.push(c.env.DB.prepare('INSERT INTO alert_state (monitor_id) VALUES (?)').bind(id))
-      if (type === 'heartbeat' || type === 'agent') {
-        statements.push(c.env.DB.prepare(
-          'INSERT INTO heartbeat_tokens (monitor_id, token) VALUES (?, ?)'
-        ).bind(id, crypto.randomUUID()))
-      }
-      for (const channelId of Array.isArray(monitor.channelIds) ? monitor.channelIds : []) {
-        statements.push(c.env.DB.prepare(
-          'INSERT INTO monitor_notifications (monitor_id, channel_id) VALUES (?, ?)'
-        ).bind(id, channelId as string))
-      }
-    }
-
-    for (const page of pageRows) {
-      const id = requiredString(page, 'id')
-      statements.push(c.env.DB.prepare(`
-        INSERT INTO status_pages (
-          id, name, slug, description, password_hash, show_all_monitors,
-          logo_url, brand_color, theme, show_response_time, show_uptime,
-          history_days, seo_title, seo_description, created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        id,
-        requiredString(page, 'name'),
-        requiredString(page, 'slug'),
-        optionalString(page.description),
-        optionalString(page.passwordHash),
-        page.showAllMonitors === true ? 1 : 0,
-        optionalString(page.logoUrl),
-        typeof page.brandColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(page.brandColor)
-          ? page.brandColor.toUpperCase()
-          : '#B45309',
-        page.theme === 'light' || page.theme === 'dark' ? page.theme : 'system',
-        page.showResponseTime === false ? 0 : 1,
-        page.showUptime === false ? 0 : 1,
-        [7, 30, 60, 90].includes(integerOr(page.historyDays, 90)) ? integerOr(page.historyDays, 90) : 90,
-        optionalString(page.seoTitle),
-        optionalString(page.seoDescription),
-        integerOr(page.createdAt, now),
-      ))
-      const pageMonitorIds = Array.isArray(page.monitorIds) ? page.monitorIds : []
-      pageMonitorIds.forEach((monitorId, sortOrder) => {
-        statements.push(c.env.DB.prepare(
-          'INSERT INTO status_page_monitors (page_id, monitor_id, sort_order) VALUES (?, ?, ?)'
-        ).bind(id, monitorId as string, sortOrder))
-      })
-    }
-
-    for (const window of maintenanceRows) {
-      statements.push(c.env.DB.prepare(`
-        INSERT INTO maintenance_windows (id, monitor_id, start_at, end_at, reason)
-        VALUES (?, ?, ?, ?, ?)
-      `).bind(
-        requiredString(window, 'id'),
-        requiredString(window, 'monitorId'),
-        optionalNumber(window.startAt),
-        optionalNumber(window.endAt),
-        optionalString(window.reason),
-      ))
-    }
 
     await c.env.DB.batch(statements)
     return c.json({ ok: true })

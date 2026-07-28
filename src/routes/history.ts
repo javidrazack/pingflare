@@ -1,11 +1,16 @@
 import { Hono } from 'hono'
-import { eq, desc, and, gte, count, sql } from 'drizzle-orm'
-import { getDb, statusLogs, incidents, monitors } from '../db'
+import { and, desc, eq, gte } from 'drizzle-orm'
+import { getDb, incidents, monitors, statusLogs } from '../db'
 import { requireAuth } from '../middleware/auth'
+import { getMonitorAnalytics } from '../services/history-rollups'
 import type { Env } from '../index'
 
 const router = new Hono<{ Bindings: Env }>()
 router.use('*', requireAuth)
+router.use('*', async (c, next) => {
+  await next()
+  c.header('Cache-Control', 'private, no-store')
+})
 
 function boundedInt(value: string | undefined, fallback: number, min: number, max: number): number {
   if (value === undefined) return fallback
@@ -13,25 +18,21 @@ function boundedInt(value: string | undefined, fallback: number, min: number, ma
   return Number.isInteger(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback
 }
 
+function roundedPercent(up: number, total: number): number | null {
+  return total > 0 ? Math.round((up / total) * 10000) / 100 : null
+}
+
 router.get('/uptime-summary', async (c) => {
   const db = getDb(c.env.DB)
   const days = boundedInt(c.req.query('days'), 30, 1, 365)
-  const since = Math.floor(Date.now() / 1000) - days * 86400
-  const rows = await db.select({
-    monitorId: statusLogs.monitorId,
-    ups: sql<number>`SUM(CASE WHEN ${statusLogs.status} = 'up' THEN 1 ELSE 0 END)`.as('ups'),
-    total: count(),
-  })
-    .from(statusLogs)
-    .where(gte(statusLogs.checkedAt, since))
-    .groupBy(statusLogs.monitorId)
-
+  const monitorRows = await db.select({ id: monitors.id }).from(monitors)
+  const result = await getMonitorAnalytics(c.env, monitorRows.map((row) => row.id), days, undefined, c.req.url)
   const uptimes: Record<string, number | null> = {}
-  for (const row of rows) {
-    uptimes[row.monitorId] = row.total > 0
-      ? Math.round((row.ups / row.total) * 10000) / 100
-      : null
+  for (const id of monitorRows.map((row) => row.id)) {
+    const analytics = result.analytics[id]
+    uptimes[id] = analytics ? roundedPercent(analytics.up, analytics.count) : null
   }
+  c.header('X-Pingflare-Aggregate-Cache', result.cacheStatus)
   return c.json({ days, uptimes })
 })
 
@@ -57,10 +58,13 @@ router.get('/:id/logs', async (c) => {
 })
 
 router.get('/:id/check-count', async (c) => {
-  const db = getDb(c.env.DB)
   const id = c.req.param('id')
-  const [{ total }] = await db.select({ total: count() }).from(statusLogs).where(eq(statusLogs.monitorId, id))
-  return c.json({ count: total })
+  const row = await c.env.DB.prepare(`
+    SELECT
+      COALESCE((SELECT SUM(checks) FROM monitor_daily_rollups WHERE monitor_id = ?), 0)
+      + COALESCE((SELECT day_checks FROM monitors WHERE id = ?), 0) AS count
+  `).bind(id, id).first<{ count: number }>()
+  return c.json({ count: Number(row?.count ?? 0) })
 })
 
 router.get('/:id/incidents', async (c) => {
@@ -77,22 +81,36 @@ router.get('/:id/incidents', async (c) => {
   return c.json(rows)
 })
 
+router.get('/:id/analytics', async (c) => {
+  const db = getDb(c.env.DB)
+  const id = c.req.param('id')
+  const days = boundedInt(c.req.query('days'), 90, 1, 365)
+  const monitor = await db.query.monitors.findFirst({ where: eq(monitors.id, id) })
+  if (!monitor) return c.json({ error: 'Not found' }, 404)
+
+  const result = await getMonitorAnalytics(c.env, [id], days, undefined, c.req.url)
+  c.header('X-Pingflare-Aggregate-Cache', result.cacheStatus)
+  return c.json(result.analytics[id])
+})
+
+// Compatibility endpoints retained for existing clients. New clients should use
+// the single /analytics call to avoid four separate aggregate requests.
 router.get('/:id/uptime', async (c) => {
   const db = getDb(c.env.DB)
   const id = c.req.param('id')
   const days = boundedInt(c.req.query('days'), 90, 1, 365)
-  const since = Math.floor(Date.now() / 1000) - days * 86400
+  const monitor = await db.query.monitors.findFirst({ where: eq(monitors.id, id) })
+  if (!monitor) return c.json({ error: 'Not found' }, 404)
 
-  const [agg] = await db.select({
-    ups: sql<number>`SUM(CASE WHEN ${statusLogs.status} = 'up' THEN 1 ELSE 0 END)`.as('ups'),
-    total: count(),
+  const result = await getMonitorAnalytics(c.env, [id], days, undefined, c.req.url)
+  const analytics = result.analytics[id]
+  c.header('X-Pingflare-Aggregate-Cache', result.cacheStatus)
+  return c.json({
+    uptime: analytics ? roundedPercent(analytics.up, analytics.count) : null,
+    days,
+    total: analytics?.count ?? 0,
+    up: analytics?.up ?? 0,
   })
-    .from(statusLogs)
-    .where(and(eq(statusLogs.monitorId, id), gte(statusLogs.checkedAt, since)))
-
-  if (!agg || !agg.total) return c.json({ uptime: null, days })
-
-  return c.json({ uptime: Math.round((agg.ups / agg.total) * 10000) / 100, days, total: agg.total, up: agg.ups })
 })
 
 router.get('/:id/daily', async (c) => {
@@ -102,30 +120,9 @@ router.get('/:id/daily', async (c) => {
   const monitor = await db.query.monitors.findFirst({ where: eq(monitors.id, id) })
   if (!monitor) return c.json({ error: 'Not found' }, 404)
 
-  const now = Math.floor(Date.now() / 1000)
-  const since = now - days * 86400
-  const dayExpr = sql<string>`strftime('%Y-%m-%d', datetime(${statusLogs.checkedAt}, 'unixepoch'))`
-
-  const rows = await db.select({
-    day: dayExpr.as('day'),
-    ups: sql<number>`SUM(CASE WHEN ${statusLogs.status} = 'up' THEN 1 ELSE 0 END)`.as('ups'),
-    total: sql<number>`COUNT(*)`.as('total'),
-  })
-    .from(statusLogs)
-    .where(and(eq(statusLogs.monitorId, id), gte(statusLogs.checkedAt, since)))
-    .groupBy(dayExpr)
-
-  const dayMap: Record<string, { ups: number; total: number }> = {}
-  for (const row of rows) dayMap[row.day] = { ups: row.ups, total: row.total }
-
-  const result: { date: string; uptime: number | null }[] = []
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date((now - i * 86400) * 1000).toISOString().slice(0, 10)
-    const e = dayMap[d]
-    result.push({ date: d, uptime: e ? Math.round((e.ups / e.total) * 1000) / 10 : null })
-  }
-
-  return c.json(result)
+  const result = await getMonitorAnalytics(c.env, [id], days, undefined, c.req.url)
+  c.header('X-Pingflare-Aggregate-Cache', result.cacheStatus)
+  return c.json(result.analytics[id]?.daily ?? [])
 })
 
 export default router

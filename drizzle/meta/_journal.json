@@ -36,6 +36,20 @@
       "when": 1784866399269,
       "tag": "0004_wandering_mulholland_black",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1785171208635,
+      "tag": "0005_flimsy_quicksilver",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1785171277831,
+      "tag": "0006_remarkable_johnny_blaze",
+      "breakpoints": true
     }
   ]
 }

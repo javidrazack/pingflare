@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { createTestDb, makeEnv, insertMonitor } from './setup'
-import { monitors, statusLogs, heartbeatTokens } from '../db/schema'
+import { heartbeatTokens, monitorDailyRollups, monitors, settings, statusLogs } from '../db/schema'
 
 vi.mock('../services/checker', () => ({
   checkHttp: vi.fn().mockResolvedValue({ status: 'up', statusCode: 200, responseTimeMs: 42, message: 'OK' }),
@@ -74,6 +74,49 @@ describe('cron — due selection', () => {
     const logs = await db.select().from(statusLogs)
     expect(logs).toHaveLength(0)
   })
+
+  it('skips an overlapping invocation while the scheduler lease is held', async () => {
+    const { db, d1 } = ctx
+    await insertMonitor(db)
+    const now = Math.floor(Date.now() / 1000)
+    await d1.prepare(`
+      INSERT INTO scheduler_leases (name, holder, lease_until, updated_at)
+      VALUES ('monitor-cron', 'other-run', ?, ?)
+    `).bind(now + 60, now).run()
+
+    const { runCron } = await import('../cron')
+    const result = await runCron(makeEnv(d1))
+
+    expect(result.skippedBecauseLeased).toBe(true)
+    expect(await db.select().from(statusLogs)).toHaveLength(0)
+  })
+
+  it('catches up writes made by the legacy Worker between migration and deploy', async () => {
+    const { db, d1 } = ctx
+    const monitorId = await insertMonitor(db)
+    const checkedAt = Math.floor(Date.now() / 1000) - 30
+    await db.delete(settings).where(eq(settings.key, '_schema_legacy_gap_catchup_v1'))
+    await db.insert(statusLogs).values({
+      id: crypto.randomUUID(),
+      monitorId,
+      status: 'up',
+      checkedAt,
+      responseTimeMs: 25,
+      source: null,
+    })
+
+    const { runCron } = await import('../cron')
+    const result = await runCron(makeEnv(d1))
+
+    expect(result.checked).toBe(0)
+    const [legacyLog] = await db.select().from(statusLogs)
+      .where(eq(statusLogs.monitorId, monitorId))
+    expect(legacyLog.source).toBe('legacy')
+    const [rollup] = await db.select().from(monitorDailyRollups)
+      .where(eq(monitorDailyRollups.monitorId, monitorId))
+    expect(rollup.checks).toBe(1)
+    expect(rollup.upCount).toBe(1)
+  })
 })
 
 describe('cron — batch insert and concurrency', () => {
@@ -84,7 +127,7 @@ describe('cron — batch insert and concurrency', () => {
     ctx = await createTestDb()
   })
 
-  it('inserts a log for every due monitor (> CONCURRENCY=10)', async () => {
+  it('drains a large due set across query-budgeted runs', async () => {
     const { db, d1 } = ctx
     const count = 25
     const ids: string[] = []
@@ -93,7 +136,12 @@ describe('cron — batch insert and concurrency', () => {
     }
 
     const { runCron } = await import('../cron')
-    await runCron(makeEnv(d1))
+    const env = makeEnv(d1)
+    await runCron(env)
+    await runCron(env)
+    await runCron(env)
+    await runCron(env)
+    await runCron(env)
 
     const logs = await db.select().from(statusLogs)
     expect(logs).toHaveLength(count)

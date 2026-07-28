@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Hono } from 'hono'
 import { createTestDb, makeEnv, makeAuthHeader, insertMonitor } from './setup'
 import backupRouter from '../routes/backup'
@@ -206,5 +206,24 @@ describe('POST /api/backup/restore', () => {
     const mons = await db.select().from(monitors)
     expect(mons).toHaveLength(1)
     expect(mons[0].name).toBe('Idempotent')
+  })
+
+  it('restores many monitors with a fixed number of D1 statements', async () => {
+    const { db, d1 } = ctx
+    for (let index = 0; index < 30; index += 1) {
+      await insertMonitor(db, { name: `Monitor ${index}` })
+    }
+
+    const { app, env } = buildApp(d1)
+    const exportRes = await doGet(app, env, auth)
+    const backup = await exportRes.json()
+    const batchSpy = vi.spyOn(d1, 'batch')
+
+    const restoreRes = await doRestore(app, env, auth, backup)
+
+    expect(restoreRes.status).toBe(200)
+    expect(batchSpy).toHaveBeenCalledTimes(1)
+    expect(batchSpy.mock.calls[0][0]).toHaveLength(13)
+    expect(await db.select().from(monitors)).toHaveLength(30)
   })
 })

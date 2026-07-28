@@ -81,6 +81,7 @@ export const api = {
     uptime:      (id: string, days = 90) => request<{ uptime: number | null; days: number }>(`/monitors/${id}/uptime?days=${days}`),
     uptimeSummary: (days = 30) => request<{ days: number; uptimes: Record<string, number | null> }>(`/monitors/uptime-summary?days=${days}`),
     daily:       (id: string, days = 90) => request<DailyUptime[]>(`/monitors/${id}/daily?days=${days}`),
+    analytics:   (id: string, days = 90) => request<MonitorAnalytics>(`/monitors/${id}/analytics?days=${days}`),
   },
 
   cron: {
@@ -206,6 +207,7 @@ export interface StatusLog {
   colo: string | null
   countryCode: string | null
   originIp: string | null
+  source: 'cron' | 'heartbeat' | 'agent' | null
 }
 
 export interface Incident {
@@ -239,6 +241,21 @@ export interface NotificationTestRun {
 export interface DailyUptime {
   date: string
   uptime: number | null
+}
+
+export interface MonitorAnalytics {
+  monitorId: string
+  uptimes: {
+    '1': number | null
+    '7': number | null
+    '30': number | null
+    '90': number | null
+  }
+  daily: DailyUptime[]
+  count: number
+  up: number
+  down: number
+  avgResponseMs: number | null
 }
 
 export interface StatusPage {

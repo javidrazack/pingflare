@@ -1,8 +1,9 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { eq } from 'drizzle-orm'
-import { getDb, heartbeatTokens, monitors, statusLogs, alertState } from '../db'
+import { getDb, heartbeatTokens, monitors } from '../db'
 import { processAlert, getLocale } from '../services/alert-manager'
+import { persistCheckObservations } from '../services/check-storage'
 import { msgHeartbeatReceived } from '../notifications/messages'
 import type { Env } from '../index'
 
@@ -30,21 +31,19 @@ async function handleHeartbeat(c: Context<{ Bindings: Env }>) {
   const locale = await getLocale(db)
   const receivedMsg = msgHeartbeatReceived(locale)
 
-  await db.update(heartbeatTokens)
-    .set({ lastPingAt: now })
-    .where(eq(heartbeatTokens.token, token))
-  await db.update(monitors)
-    .set({ lastCheckedAt: now })
-    .where(eq(monitors.id, monitor.id))
-
-  await db.insert(statusLogs).values({
-    id: crypto.randomUUID(),
-    monitorId: monitor.id,
+  await persistCheckObservations(c.env, [{
+    monitor,
     status: 'up',
     message: 'notify.heartbeatReceived',
     responseTimeMs: null,
     checkedAt: now,
-  })
+    source: 'heartbeat',
+    resultCode: 'heartbeat_received',
+  }], [
+    c.env.DB.prepare(
+      'UPDATE heartbeat_tokens SET last_ping_at = ? WHERE token = ?',
+    ).bind(now, token),
+  ])
 
   await processAlert({
     db,
@@ -53,10 +52,6 @@ async function handleHeartbeat(c: Context<{ Bindings: Env }>) {
     message: receivedMsg,
     encryptionKey: c.env.ENCRYPTION_KEY,
   })
-
-  await db.update(alertState)
-    .set({ consecutiveMissed: 0, alertSentAt: null, consecutiveAlerts: 0, surgePausedUntil: null })
-    .where(eq(alertState.monitorId, monitor.id))
 
   return new Response(null, {
     status: 200,

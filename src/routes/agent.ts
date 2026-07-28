@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
-import { getDb, monitors, heartbeatTokens, statusLogs, alertState } from '../db'
+import { getDb, monitors, heartbeatTokens } from '../db'
 import { processAlert } from '../services/alert-manager'
+import { persistCheckObservations } from '../services/check-storage'
 import { evaluateAgentPayload, parseAgentPayload } from '../services/agent-status'
 import { buildAgentInstaller } from '../services/agent-installer'
 import { readJsonBodyWithLimit, RequestBodyTooLargeError } from '../request'
@@ -24,8 +25,8 @@ router.get('/install/:token', async (c) => {
     where: eq(monitors.id, tokenRecord.monitorId),
   })
 
-  if (!monitor || monitor.type !== 'agent') {
-    return c.text('Not an agent monitor', 400)
+  if (!monitor || monitor.type !== 'agent' || !monitor.active) {
+    return c.text('Not an active agent monitor', 400)
   }
 
   const script = buildAgentInstaller(tokenRecord.token, new URL(c.req.url).origin)
@@ -54,8 +55,8 @@ router.post('/push/:token', async (c) => {
     where: eq(monitors.id, tokenRecord.monitorId),
   })
 
-  if (!monitor || monitor.type !== 'agent') {
-    return c.text('Not an agent monitor', 400)
+  if (!monitor || monitor.type !== 'agent' || !monitor.active) {
+    return c.text('Not an active agent monitor', 400)
   }
 
   let rawBody: unknown
@@ -76,20 +77,29 @@ router.post('/push/:token', async (c) => {
   const { status, message } = evaluateAgentPayload(monitor, body)
   const snapshot = { ...body, status, message, evaluatedAt: now }
 
-  await db.update(heartbeatTokens)
-    .set({ lastPingAt: now })
-    .where(eq(heartbeatTokens.monitorId, monitor.id))
-  await db.update(monitors)
-    .set({ lastMetrics: JSON.stringify(snapshot), lastCheckedAt: now })
-    .where(eq(monitors.id, monitor.id))
-  await db.insert(statusLogs).values({
-    id: crypto.randomUUID(),
-    monitorId: monitor.id,
+  const unhealthyContainers = body.docker.filter((container) =>
+    container.status !== 'running' || container.health?.includes('unhealthy'),
+  ).length
+  await persistCheckObservations(c.env, [{
+    monitor,
     status,
     message,
     responseTimeMs: null,
     checkedAt: now,
-  })
+    source: 'agent',
+    resultCode: status === 'up' ? 'agent_ok' : 'agent_threshold',
+    lastMetrics: JSON.stringify(snapshot),
+    agentMetrics: {
+      cpu: body.cpu,
+      ram: body.ram,
+      disk: body.disk,
+      unhealthyContainers,
+    },
+  }], [
+    c.env.DB.prepare(
+      'UPDATE heartbeat_tokens SET last_ping_at = ? WHERE monitor_id = ?',
+    ).bind(now, monitor.id),
+  ])
 
   await processAlert({
     db,

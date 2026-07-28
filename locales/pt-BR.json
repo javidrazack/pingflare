@@ -111,7 +111,7 @@
   "monitor.pendingHint": "Este monitor nunca foi verificado. O cron roda a cada minuto em produção. No dev, clique em Verificar agora ou execute:",
   "monitor.uptime90d": "Uptime 90 dias",
   "monitor.overallUptime": "Uptime geral",
-  "monitor.last24h": "Últimas 24h",
+  "monitor.last24h": "Hoje (UTC)",
   "monitor.last7d": "Últimos 7 dias",
   "monitor.last30d": "Últimos 30 dias",
   "monitor.last90d": "Últimos 90 dias",

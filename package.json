@@ -5,6 +5,28 @@
   "workspaces": [
     "frontend"
   ],
+  "cloudflare": {
+    "bindings": {
+      "ADMIN_USER": {
+        "description": "Dashboard administrator username."
+      },
+      "ADMIN_PASS": {
+        "description": "Use a unique, high-entropy dashboard password."
+      },
+      "JWT_SECRET": {
+        "description": "Generate at least 32 random characters, for example with `openssl rand -hex 32`."
+      },
+      "ENCRYPTION_KEY": {
+        "description": "Generate a different random value of at least 32 characters for encrypting notification credentials."
+      },
+      "PINGFLARE_INSTANCE_ID": {
+        "description": "Short label used to distinguish this deployment in Analytics Engine."
+      },
+      "API_ANALYTICS_SAMPLE_RATE": {
+        "description": "Fraction of successful API requests written to Analytics Engine. The default `0.05` records 5%; errors are always recorded."
+      }
+    }
+  },
   "scripts": {
     "dev": "concurrently -n backend,frontend,cron -c blue,green,yellow \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:cron\"",
     "dev:backend": "wrangler dev --test-scheduled",
@@ -14,11 +36,12 @@
     "build": "npm run typecheck && npm run build -w frontend",
     "build:server": "tsup",
     "start": "node dist-server/server.js",
-    "deploy": "npm run build && wrangler deploy",
+    "deploy": "npm run build && node scripts/reconcile-legacy-migration.mjs && npm run db:migrate:remote && wrangler deploy",
+    "deploy:worker": "npm run deploy",
     "db:generate": "drizzle-kit generate",
-    "db:migrate:local": "wrangler d1 migrations apply pingflare --local",
-    "db:migrate:remote": "wrangler d1 migrations apply pingflare --remote",
-    "cf-typegen": "wrangler types",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "cf-typegen": "wrangler types --strict-vars false",
     "typecheck": "tsc --noEmit && npm run check -w frontend",
     "test": "vitest run",
     "test:watch": "vitest"

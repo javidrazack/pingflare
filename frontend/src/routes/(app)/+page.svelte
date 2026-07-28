@@ -13,21 +13,66 @@
   let running = false
   let lastRun: Date | null = null
   let uptimes: Record<string, number | null> = {}
-  let ticker: ReturnType<typeof setInterval>
+  let currentTicker: ReturnType<typeof setTimeout>
+  let analyticsTicker: ReturnType<typeof setTimeout>
+  let currentInFlight = false
+  let analyticsInFlight = false
+  let destroyed = false
 
-  async function load() {
+  async function loadCurrent() {
+    if (currentInFlight || (typeof document !== 'undefined' && document.hidden)) return
+    currentInFlight = true
     try {
-      const [list, summary] = await Promise.all([
-        api.monitors.list(),
-        api.monitors.uptimeSummary(30),
-      ])
+      const list = await api.monitors.list()
       monitors.set(list)
-      uptimes = summary.uptimes
       error = ''
     } catch (e) {
       error = String(e)
     } finally {
-      loading = false
+      currentInFlight = false
+    }
+  }
+
+  async function loadAnalytics() {
+    if (analyticsInFlight || (typeof document !== 'undefined' && document.hidden)) return
+    analyticsInFlight = true
+    try {
+      const summary = await api.monitors.uptimeSummary(30)
+      uptimes = summary.uptimes
+    } catch (e) {
+      error = String(e)
+    } finally {
+      analyticsInFlight = false
+    }
+  }
+
+  async function load() {
+    await Promise.all([loadCurrent(), loadAnalytics()])
+    loading = false
+  }
+
+  function scheduleCurrent() {
+    clearTimeout(currentTicker)
+    if (!destroyed) currentTicker = setTimeout(async () => {
+      await loadCurrent()
+      scheduleCurrent()
+    }, 30_000)
+  }
+
+  function scheduleAnalytics() {
+    clearTimeout(analyticsTicker)
+    if (!destroyed) analyticsTicker = setTimeout(async () => {
+      await loadAnalytics()
+      scheduleAnalytics()
+    }, 5 * 60_000)
+  }
+
+  function handleVisibility() {
+    if (!document.hidden) {
+      void loadCurrent()
+      void loadAnalytics()
+      scheduleCurrent()
+      scheduleAnalytics()
     }
   }
 
@@ -44,8 +89,19 @@
     }
   }
 
-  onMount(() => { load(); ticker = setInterval(load, 10_000) })
-  onDestroy(() => clearInterval(ticker))
+  onMount(() => {
+    void load().finally(() => {
+      scheduleCurrent()
+      scheduleAnalytics()
+    })
+    document.addEventListener('visibilitychange', handleVisibility)
+  })
+  onDestroy(() => {
+    destroyed = true
+    clearTimeout(currentTicker)
+    clearTimeout(analyticsTicker)
+    document.removeEventListener('visibilitychange', handleVisibility)
+  })
 
   $: total   = $monitors.length
   $: up      = $monitors.filter(m => m.lastStatus === 'up').length
