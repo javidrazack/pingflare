@@ -14,6 +14,7 @@
   let loading = true
   let showCreate = false
   let editChannel: NotificationChannel | null = null
+  let createType: NotificationChannel['type'] = 'slack'
 
   onMount(async () => {
     channels.set(await api.notifications.list())
@@ -36,8 +37,14 @@
     editChannel = null
   }
 
+  function startCreate(type: NotificationChannel['type'] = 'slack') {
+    createType = type
+    showCreate = true
+    editChannel = null
+  }
+
   const CHANNEL_ICONS: Record<string, string> = {
-    discord: 'bell', slack: 'bell', telegram: 'arrow-up-right',
+    discord: 'bell', slack: 'chat-bubble', telegram: 'paper-airplane',
     email: 'clipboard', ntfy: 'bell', pushover: 'bell',
     webhook: 'globe', apprise: 'cog',
   }
@@ -56,7 +63,7 @@
           {$t('notifications.subtitle')}
         </p>
       </div>
-      <button class="btn-primary shrink-0" on:click={() => { showCreate = true; editChannel = null }}>
+      <button class="btn-primary shrink-0" on:click={() => startCreate()}>
         <Icon name="plus" size={14} />
         {$t('notifications.addChannel')}
       </button>
@@ -68,7 +75,7 @@
     {#if showCreate}
     <div class="card">
       <h2 class="text-sm font-semibold mb-5" style="color: rgb(var(--text))">{$t('notifications.newChannel')}</h2>
-      <NotificationForm mode="create" on:saved={onSaved} on:cancel={() => showCreate = false} />
+      <NotificationForm channel={{ type: createType }} mode="create" on:saved={onSaved} on:cancel={() => showCreate = false} />
     </div>
     {/if}
 
@@ -88,7 +95,7 @@
       <PageLoader />
 
     {:else if $channels.length === 0 && !showCreate}
-      <div class="rounded text-center py-20 space-y-5"
+      <div class="rounded px-5 py-10 text-center md:px-10 md:py-14"
         style="border: 1px solid var(--border-color); background-color: rgb(var(--card));
 ">
         <div class="w-14 h-14 rounded flex items-center justify-center mx-auto"
@@ -101,19 +108,54 @@
             {$t('notifications.emptyDesc')}
           </p>
         </div>
-        <button class="btn-primary inline-flex" on:click={() => showCreate = true}>
-          <Icon name="plus" size={14} />
-          {$t('notifications.addFirst')}
+        <div class="mx-auto mt-8 grid max-w-2xl gap-3 text-left sm:grid-cols-2">
+          <button
+            class="group min-h-28 rounded-xl border p-4 text-left transition-colors hover:bg-[rgb(var(--bg-subtle))]"
+            on:click={() => startCreate('slack')}
+          >
+            <span class="flex items-center gap-3">
+              <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-solid">
+                <Icon name="chat-bubble" size={19} />
+              </span>
+              <span>
+                <span class="block text-sm font-semibold" style="color: rgb(var(--text))">Slack</span>
+                <span class="mt-0.5 block text-xs" style="color: rgb(var(--text-muted))">{$t('notifications.slackQuickDesc')}</span>
+              </span>
+            </span>
+            <span class="mt-3 inline-flex items-center gap-1 text-xs font-semibold" style="color: var(--color-primary)">
+              {$t('notifications.setupSlack')} <Icon name="arrow-up-right" size={13} />
+            </span>
+          </button>
+          <button
+            class="group min-h-28 rounded-xl border p-4 text-left transition-colors hover:bg-[rgb(var(--bg-subtle))]"
+            on:click={() => startCreate('telegram')}
+          >
+            <span class="flex items-center gap-3">
+              <span class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-solid">
+                <Icon name="paper-airplane" size={19} />
+              </span>
+              <span>
+                <span class="block text-sm font-semibold" style="color: rgb(var(--text))">Telegram</span>
+                <span class="mt-0.5 block text-xs" style="color: rgb(var(--text-muted))">{$t('notifications.telegramQuickDesc')}</span>
+              </span>
+            </span>
+            <span class="mt-3 inline-flex items-center gap-1 text-xs font-semibold" style="color: var(--color-primary)">
+              {$t('notifications.setupTelegram')} <Icon name="arrow-up-right" size={13} />
+            </span>
+          </button>
+        </div>
+        <button class="btn-ghost mt-4 inline-flex" on:click={() => startCreate('discord')}>
+          {$t('notifications.chooseAnother')}
         </button>
       </div>
 
     {:else}
       <div class="space-y-2">
         {#each $channels as ch (ch.id)}
-          <div class="rounded flex items-center gap-4 px-5 py-4 transition-all"
+          <div class="rounded flex flex-col items-stretch gap-4 px-4 py-4 transition-all sm:flex-row sm:items-center sm:px-5"
             style="background-color: rgb(var(--card)); border: 1px solid var(--border-color)">
 
-            <div class="rounded flex items-center justify-center shrink-0"
+            <div class="hidden h-10 w-10 rounded items-center justify-center shrink-0 sm:flex"
               style="background-color: rgb(var(--bg-muted)); color: rgb(var(--text-muted))">
               <Icon name={CHANNEL_ICONS[ch.type] ?? 'bell'} size={18} />
             </div>
@@ -123,18 +165,18 @@
               <div class="text-xs mt-0.5" style="color: rgb(var(--text-muted))">{channelTypeLabel(ch.type)}</div>
             </div>
 
-            <div class="flex items-center gap-2 shrink-0">
+            <div class="flex flex-wrap items-center gap-2 shrink-0 sm:flex-nowrap">
               <span class="badge {ch.active ? 'badge-up' : 'badge-down'}">
                 {ch.active ? $t('notifications.active') : $t('notifications.disabled')}
               </span>
-              <button class="btn-ghost px-2.5 py-1.5 text-xs"
+              <button class="btn-ghost min-h-11 px-2.5 py-1.5 text-xs"
                 on:click={() => { editChannel = ch; showCreate = false }}>
                 <Icon name="pencil" size={14} />
                 {$t('notifications.edit')}
               </button>
               <button
-                class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-400 transition-colors"
-                style="hover:background: rgb(239 68 68 / .08)"
+                class="inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-red-500/10"
+                style="color: var(--danger-fg)"
                 on:click={() => deleteChannel(ch.id, ch.name)}>
                 <Icon name="trash" size={14} />
                 {$t('notifications.delete')}

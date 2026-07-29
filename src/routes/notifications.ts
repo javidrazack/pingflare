@@ -5,7 +5,9 @@ import { requireAuth } from '../middleware/auth'
 import { sendNotification } from '../services/notifier'
 import { SENSITIVE_FIELDS, isEncryptedValue, encryptField } from '../utils'
 import { readJsonBodyWithLimit, RequestBodyTooLargeError } from '../request'
+import { validateNotificationConfig } from '../notifications/config'
 import type { Env } from '../index'
+import type { NotificationChannel } from '../db/schema'
 
 const router = new Hono<{ Bindings: Env }>()
 router.use('*', requireAuth)
@@ -107,6 +109,8 @@ router.post('/', async (c) => {
   if (validationError || typeof body.name !== 'string') {
     return c.json({ error: validationError ?? 'Channel name is required' }, 400)
   }
+  const configError = validateNotificationConfig(body.type, body.config ?? {})
+  if (configError) return c.json({ error: configError }, 400)
   const id = crypto.randomUUID()
   const now = Math.floor(Date.now() / 1000)
 
@@ -129,6 +133,48 @@ router.post('/', async (c) => {
   return c.json(sanitizeChannel(created!), 201)
 })
 
+router.post('/test', async (c) => {
+  const body = await readChannelBody(c)
+  if (body instanceof Response) return body
+  const validationError = validateChannel(body)
+  if (
+    validationError
+    || typeof body.type !== 'string'
+    || !body.config
+    || typeof body.config !== 'object'
+    || Array.isArray(body.config)
+  ) {
+    return c.json({ error: validationError ?? 'Channel configuration is required' }, 400)
+  }
+  const configError = validateNotificationConfig(body.type, body.config as Record<string, string>)
+  if (configError) return c.json({ error: configError }, 400)
+
+  const started = performance.now()
+  try {
+    await sendNotification({
+      id: 'unsaved-test',
+      name: typeof body.name === 'string' ? body.name : 'Unsaved notification channel',
+      type: body.type as NotificationChannel['type'],
+      config: JSON.stringify(body.config),
+      active: true,
+      isDefault: false,
+      createdAt: Math.floor(Date.now() / 1000),
+    }, {
+      type: 'callback',
+      monitor: { id: 'test', name: 'Test Monitor', type: 'http', url: 'https://example.com' },
+      status: 'up',
+      message: 'This is a test notification from Pingflare.',
+    }, undefined, AbortSignal.timeout(NOTIFICATION_TEST_TIMEOUT_MS))
+
+    return c.json({
+      ok: true,
+      latencyMs: Math.max(0, Math.round(performance.now() - started)),
+    })
+  } catch (err) {
+    return c.json({ error: String(err).slice(0, 1000) }, 502)
+  }
+})
+
 router.put('/:id', async (c) => {
   const db = getDb(c.env.DB)
   const id = c.req.param('id')
@@ -143,6 +189,9 @@ router.put('/:id', async (c) => {
   if (validationError) return c.json({ error: validationError }, 400)
 
   const nextType = body.type ?? existing.type
+  if (nextType !== existing.type && body.config === undefined) {
+    return c.json({ error: 'Channel configuration is required when changing type' }, 400)
+  }
   let newConfig: Record<string, string> | undefined
   if (body.config !== undefined) {
     const existingConfig = JSON.parse(existing.config) as Record<string, string>
@@ -165,6 +214,10 @@ router.put('/:id', async (c) => {
 
     newConfig = mergedConfig
   }
+
+  const effectiveConfig = newConfig ?? JSON.parse(existing.config) as Record<string, string>
+  const configError = validateNotificationConfig(nextType, effectiveConfig)
+  if (configError) return c.json({ error: configError }, 400)
 
   await db.update(notificationChannels).set({
     name: body.name ?? existing.name,

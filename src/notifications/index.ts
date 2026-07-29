@@ -13,6 +13,7 @@ import { sendPagerDuty } from './pagerduty'
 import { sendMatrix } from './matrix'
 import { sendTwilio } from './twilio'
 import { SENSITIVE_FIELDS, isEncryptedValue, decryptField } from '../utils'
+import { validateNotificationConfig } from './config'
 export { formatMessage } from './messages'
 
 export interface NotificationPayload {
@@ -41,6 +42,8 @@ export async function sendNotification(
     }
   }
   signal?.throwIfAborted()
+  const configError = validateNotificationConfig(channel.type, config)
+  if (configError) throw new Error(configError)
   const locale = payload.locale ?? 'en'
   switch (channel.type) {
     case 'discord':  return sendDiscord(config, payload, locale, signal)

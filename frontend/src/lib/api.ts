@@ -104,6 +104,7 @@ export const api = {
     create: (data: NotificationChannelPayload) => request<NotificationChannel>('/notifications', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: NotificationChannelPayload) => request<NotificationChannel>(`/notifications/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) => request<{ ok: boolean }>(`/notifications/${id}`, { method: 'DELETE' }),
+    previewTest: (data: NotificationChannelPayload) => request<{ ok: boolean; latencyMs: number }>('/notifications/test', { method: 'POST', body: JSON.stringify(data) }),
     test:              (id: string) => request<{ ok: boolean; run: NotificationTestRun }>(`/notifications/${id}/test`, { method: 'POST' }),
     tests:             (id: string) => request<NotificationTestRun[]>(`/notifications/${id}/tests`),
     applyToAllMonitors:(id: string) => request<{ ok: boolean; applied: number }>(`/notifications/${id}/apply-all-monitors`, { method: 'POST' }),
