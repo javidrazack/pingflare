@@ -82,6 +82,12 @@ export const api = {
     uptimeSummary: (days = 30) => request<{ days: number; uptimes: Record<string, number | null> }>(`/monitors/uptime-summary?days=${days}`),
     daily:       (id: string, days = 90) => request<DailyUptime[]>(`/monitors/${id}/daily?days=${days}`),
     analytics:   (id: string, days = 90) => request<MonitorAnalytics>(`/monitors/${id}/analytics?days=${days}`),
+    metricHistory: (id: string, range: AgentMetricRange = '24h') =>
+      request<AgentMetricHistory>(`/monitors/${id}/metric-history?range=${range}`),
+  },
+
+  infrastructure: {
+    overview: () => request<InfrastructureOverview>('/infrastructure/overview'),
   },
 
   cron: {
@@ -257,6 +263,59 @@ export interface MonitorAnalytics {
   up: number
   down: number
   avgResponseMs: number | null
+}
+
+export type AgentMetricRange = '2h' | '24h' | '7d' | '30d'
+
+export interface AgentMetricPoint {
+  sampledAt: number
+  cpu: { avg: number; max: number }
+  ram: { avg: number; max: number }
+  disk: { avg: number; max: number }
+}
+
+export interface AgentMetricHistory {
+  monitorId: string
+  range: AgentMetricRange
+  resolutionSeconds: number
+  thresholds: {
+    cpu: number | null
+    ram: number | null
+    disk: number | null
+  }
+  points: AgentMetricPoint[]
+}
+
+export type InfrastructureNodeState =
+  | 'healthy'
+  | 'warning'
+  | 'critical'
+  | 'stale'
+  | 'pending'
+  | 'paused'
+
+export interface InfrastructureNode {
+  id: string
+  name: string
+  state: InfrastructureNodeState
+  active: boolean
+  lastCheckedAt: number | null
+  metrics: { cpu: number; ram: number; disk: number } | null
+  thresholds: { cpu: number | null; ram: number | null; disk: number | null }
+  pressure: 'normal' | 'warning' | 'critical'
+}
+
+export interface InfrastructureOverview {
+  generatedAt: number
+  truncated: boolean
+  summary: {
+    total: number
+    reporting: number
+    pressure: number
+    stale: number
+  }
+  issues: InfrastructureNode[]
+  nodes: InfrastructureNode[]
 }
 
 export interface CronRunResult {

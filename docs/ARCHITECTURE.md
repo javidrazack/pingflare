@@ -78,10 +78,11 @@ The telemetry and cache paths are deliberately non-authoritative. A failed Analy
 2. The scheduler selects due active monitors through the indexed `next_check_at` cursor. It hard-caps each run at eight and admits only work that fits the remaining 50-query Free-plan budget after fixed cron and notification-delivery reserves.
 3. HTTP, DNS, and ping checks run in query-budgeted batches with concurrency up to six. Every check has one end-to-end deadline of at most 60 seconds, including response-body reads and digest-auth retries. Heartbeat and agent state is prefetched in one query.
 4. A D1 batch archives a completed UTC day when needed and updates `last_checked_at`, `next_check_at`, and exact current-day counters in the same transaction. Compare-and-swap guards discard a cron heartbeat/agent result if a newer inbound push committed first.
-5. A D1 diagnostic row is written only for first checks, status transitions, internal errors, or the ten-minute sample boundary.
-6. One privacy-bounded Analytics Engine point is emitted synchronously. A write failure is ignored.
-7. Alert handling runs after the scheduling cursor is durable. A steady healthy check uses one conditional alert-state reset so a successful check always breaks a failure streak. Transitions durably update monitor/incident truth and enqueue a deduplicated D1 delivery event; later observations repair an interrupted transition.
-8. Each invocation drains at most two notification-provider attempts. Provider I/O has a cancellation-aware 12-second deadline; incomplete fan-out retries indefinitely with exponential backoff capped at one hour.
+5. Agent pushes also insert one CAS-guarded CPU/RAM/disk sample per five-minute bucket and an exact sample on health transitions. A trigger deletes at most one sample for that node older than 30 days after each insert.
+6. A D1 diagnostic row is written only for first checks, status transitions, internal errors, or the ten-minute sample boundary.
+7. One privacy-bounded Analytics Engine point is emitted synchronously. A write failure is ignored.
+8. Alert handling runs after the scheduling cursor is durable. A steady healthy check uses one conditional alert-state reset so a successful check always breaks a failure streak. Transitions durably update monitor/incident truth and enqueue a deduplicated D1 delivery event; later observations repair an interrupted transition.
+9. Each invocation drains at most two notification-provider attempts. Provider I/O has a cancellation-aware 12-second deadline; incomplete fan-out retries indefinitely with exponential backoff capped at one hour.
 
 Monitor and incident transitions never depend on provider availability. Recovery closes the incident immediately while its notification remains retryable. Alert/reminder delivery state advances only after the snapshotted active channels complete; deleted or disabled channels are removed from pending fan-out.
 
@@ -125,6 +126,15 @@ Healthy heartbeat and infrastructure-agent pushes use separate Worker requests a
 
 The supplied infrastructure agent reports once per minute. Ten-second reporting is unsupported: Cloudflare Cron cannot schedule below one minute, and a ten-second push source would consume 8,640 Worker requests and Analytics Engine points per day before D1 writes and UI/API traffic.
 
+Historical infrastructure metrics deliberately use five-minute D1 samples
+instead of every one-minute report. A composite primary key avoids a second
+index, and per-insert retention removes at most one expired row without using a
+cron query. Counting both the table row and primary-key entry, regular inserts
+cost about 576 D1 row writes per agent/day; once 30-day retention starts, the
+matching deletes bring the steady-state history budget to about 1,152
+writes/agent/day. Ten agents add about 11,520 history writes/day plus rare
+transition samples.
+
 ## Query and write controls
 
 - Worker request-path schema DDL has been removed.
@@ -136,10 +146,11 @@ The supplied infrastructure agent reports once per minute. Ten-second reporting 
 - Public status routes reuse already-loaded monitor rows, precompute shared date labels, cap pages at 180 monitors, and reserve conservative account-wide read units after page authorization but before expensive history work. Manual incident feeds drive from the selected monitor-link index; trigger-maintained per-monitor counts bound and pre-charge every candidate lookup.
 - Password-protected status pages use the strong password hash only to issue a short-lived, slug-scoped HMAC token; polling verifies that token cheaply.
 - Retention deletes at most 200 diagnostic rows per hour. Its next-run marker is persisted in D1, so backlog cleanup remains quota-bounded across Worker cold starts.
+- Agent metric retention is independent and node-local: each new sample deletes at most one row for that node older than 30 days. It consumes no cron admission query.
 - Destructive monitor/reset/restore paths estimate cascaded table and index writes and reject work above a 40,000-row safety envelope before changing data.
 - Deployment applies the same 40,000-write envelope to the combined source rows of every missing index, pending obsolete-index build or cleanup, and migration backfill before issuing any schema mutation.
 - Static frontend assets bypass Worker code; only `/api/*` and `/h/*` are Worker-first.
-- Dashboard current state polls every 30 seconds; historical aggregates poll every five minutes; hidden tabs pause both.
+- Dashboard current state polls every 30 seconds, the Infrastructure view every 60 seconds, and historical uptime aggregates every five minutes; hidden tabs pause polling. Agent resource history is fetched on demand and does not poll.
 
 The scheduler reserves eleven cron queries before admitting external work: nine for the normal fixed path and two for a batched alert-failure retry marker plus its fallback attempt. It also holds at least seven queries for the delivery drain. The drain upgrades from one to two provider attempts whenever the observed check path leaves the full 13-query allowance. The scheduler never performs a check whose result would have to be discarded for query-budget reasons. Deferred monitors remain due and are retried by the next cron invocation.
 

@@ -93,6 +93,16 @@ CREATE TABLE IF NOT EXISTS monitor_daily_rollups (
 
 CREATE INDEX IF NOT EXISTS idx_monitor_daily_day ON monitor_daily_rollups (day);
 
+CREATE TABLE IF NOT EXISTS agent_metric_samples (
+  monitor_id text NOT NULL,
+  sampled_at integer NOT NULL,
+  cpu_basis_points integer NOT NULL,
+  ram_basis_points integer NOT NULL,
+  disk_basis_points integer NOT NULL,
+  PRIMARY KEY(monitor_id, sampled_at),
+  FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON UPDATE no action ON DELETE cascade
+);
+
 CREATE TABLE IF NOT EXISTS scheduler_leases (
   name text PRIMARY KEY NOT NULL,
   holder text NOT NULL,
@@ -321,6 +331,21 @@ const INCIDENT_FEED_TRIGGER_SQL = [
     END`,
 ]
 
+const AGENT_METRIC_TRIGGER_SQL = `
+  CREATE TRIGGER IF NOT EXISTS trg_agent_metric_samples_retention
+  AFTER INSERT ON agent_metric_samples
+  BEGIN
+    DELETE FROM agent_metric_samples
+    WHERE monitor_id = NEW.monitor_id
+      AND sampled_at = (
+        SELECT MIN(sampled_at)
+        FROM agent_metric_samples
+        WHERE monitor_id = NEW.monitor_id
+          AND sampled_at < NEW.sampled_at - 2592000
+      );
+  END
+`
+
 export async function ensureSchema(d1: D1Database): Promise<void> {
   if (migrated) return
   if (!migrationPromise) {
@@ -333,6 +358,7 @@ export async function ensureSchema(d1: D1Database): Promise<void> {
       for (const triggerSql of INCIDENT_FEED_TRIGGER_SQL) {
         await d1.prepare(triggerSql).run()
       }
+      await d1.prepare(AGENT_METRIC_TRIGGER_SQL).run()
 
       const alterStatements = [
         `ALTER TABLE status_pages ADD COLUMN show_all_monitors integer DEFAULT false NOT NULL`,

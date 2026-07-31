@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq, isNull } from 'drizzle-orm'
 import { createTestDb, insertMonitor, makeEnv } from './setup'
 import {
+  agentMetricSamples,
   heartbeatTokens,
   incidents,
   monitorDailyRollups,
@@ -98,6 +99,121 @@ describe('persistCheckObservations', () => {
       dayResponseMaxMs: 60,
     })
     expect(await ctx.db.select().from(statusLogs)).toHaveLength(1)
+  })
+
+  it('stores one regular agent metric row per five-minute bucket', async () => {
+    const id = await insertMonitor(ctx.db, {
+      type: 'agent',
+      url: null,
+      lastStatus: 'up',
+    })
+    const env = makeEnv(ctx.d1)
+    let monitor = await ctx.db.query.monitors.findFirst({ where: eq(monitors.id, id) })
+
+    for (const checkedAt of [1_800_000_100, 1_800_000_160]) {
+      await persistCheckObservations(env, [{
+        monitor: monitor!,
+        status: 'up',
+        message: 'Agent metrics OK',
+        checkedAt,
+        source: 'agent',
+        agentMetrics: { cpu: 12.34, ram: 45.67, disk: 56.78 },
+      }])
+      monitor = await ctx.db.query.monitors.findFirst({ where: eq(monitors.id, id) })
+    }
+
+    const samples = await ctx.db.select().from(agentMetricSamples)
+    expect(samples).toEqual([{
+      monitorId: id,
+      sampledAt: 1_800_000_000,
+      cpuBasisPoints: 1234,
+      ramBasisPoints: 4567,
+      diskBasisPoints: 5678,
+    }])
+  })
+
+  it('adds an exact agent metric sample on a health transition', async () => {
+    const id = await insertMonitor(ctx.db, {
+      type: 'agent',
+      url: null,
+      lastStatus: 'up',
+    })
+    const monitor = await ctx.db.query.monitors.findFirst({ where: eq(monitors.id, id) })
+
+    await persistCheckObservations(makeEnv(ctx.d1), [{
+      monitor: monitor!,
+      status: 'down',
+      message: 'CPU threshold exceeded',
+      checkedAt: 1_800_000_160,
+      source: 'agent',
+      agentMetrics: { cpu: 95, ram: 40, disk: 50 },
+    }])
+
+    const samples = await ctx.db.select()
+      .from(agentMetricSamples)
+      .orderBy(agentMetricSamples.sampledAt)
+    expect(samples.map((sample) => sample.sampledAt)).toEqual([
+      1_800_000_000,
+      1_800_000_160,
+    ])
+  })
+
+  it('does not store agent metrics for a rejected stale observation', async () => {
+    const id = await insertMonitor(ctx.db, {
+      type: 'agent',
+      url: null,
+      lastStatus: 'up',
+      lastCheckedAt: 2_000,
+    })
+    const monitor = await ctx.db.query.monitors.findFirst({ where: eq(monitors.id, id) })
+
+    const persisted = await persistCheckObservations(makeEnv(ctx.d1), [{
+      monitor: monitor!,
+      status: 'up',
+      message: 'Stale metrics',
+      checkedAt: 1_999,
+      source: 'agent',
+      agentMetrics: { cpu: 10, ram: 20, disk: 30 },
+    }])
+
+    expect(persisted.acceptedObservations).toHaveLength(0)
+    expect(await ctx.db.select().from(agentMetricSamples)).toHaveLength(0)
+  })
+
+  it('expires at most the oldest per-node metric sample after 30 days', async () => {
+    const id = await insertMonitor(ctx.db, { type: 'agent', url: null })
+    const now = 1_900_000_000
+    await ctx.db.insert(agentMetricSamples).values([
+      {
+        monitorId: id,
+        sampledAt: now - 31 * 86400,
+        cpuBasisPoints: 1000,
+        ramBasisPoints: 2000,
+        diskBasisPoints: 3000,
+      },
+      {
+        monitorId: id,
+        sampledAt: now - 30 * 86400 - 1,
+        cpuBasisPoints: 1100,
+        ramBasisPoints: 2100,
+        diskBasisPoints: 3100,
+      },
+    ])
+    await ctx.db.insert(agentMetricSamples).values({
+      monitorId: id,
+      sampledAt: now,
+      cpuBasisPoints: 1200,
+      ramBasisPoints: 2200,
+      diskBasisPoints: 3200,
+    })
+
+    const samples = await ctx.db.select()
+      .from(agentMetricSamples)
+      .orderBy(agentMetricSamples.sampledAt)
+    expect(samples.map((sample) => sample.sampledAt)).toEqual([
+      now - 30 * 86400 - 1,
+      now,
+    ])
   })
 
   it('archives a completed UTC day and resets the live counters atomically', async () => {

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import { createTestDb, makeEnv, makeAuthHeader, insertMonitor, insertCheckObservation } from './setup'
 import historyRouter from '../routes/history'
-import { incidents, monitors } from '../db/schema'
+import { agentMetricSamples, incidents, monitors } from '../db/schema'
 import { clearAggregateMemoryCache } from '../services/response-cache'
 import { eq } from 'drizzle-orm'
 
@@ -92,6 +92,67 @@ describe('/api/monitors/:id/logs', () => {
     const res = await get(app, env, `/api/monitors/${id}/logs?hours=1`, auth)
     const rows = await res.json() as unknown[]
     expect(rows).toHaveLength(1)
+  })
+})
+
+describe('/api/monitors/:id/metric-history', () => {
+  let ctx: Awaited<ReturnType<typeof createTestDb>>
+  let auth: string
+
+  beforeEach(async () => {
+    ctx = await createTestDb()
+    auth = await makeAuthHeader()
+  })
+
+  it('returns bounded CPU, RAM, and disk rollups for an agent', async () => {
+    const id = await insertMonitor(ctx.db, { type: 'agent', url: null })
+    const now = nowSecs()
+    const bucket = now - (now % 300) - 300
+    await ctx.db.insert(agentMetricSamples).values([
+      {
+        monitorId: id,
+        sampledAt: bucket,
+        cpuBasisPoints: 2000,
+        ramBasisPoints: 4000,
+        diskBasisPoints: 6000,
+      },
+      {
+        monitorId: id,
+        sampledAt: bucket + 60,
+        cpuBasisPoints: 8000,
+        ramBasisPoints: 6000,
+        diskBasisPoints: 7000,
+      },
+    ])
+    const { app, env } = buildApp(ctx.d1)
+
+    const res = await get(app, env, `/api/monitors/${id}/metric-history?range=24h`, auth)
+    expect(res.status).toBe(200)
+    const body = await res.json() as {
+      resolutionSeconds: number
+      points: Array<{
+        cpu: { avg: number; max: number }
+        ram: { avg: number; max: number }
+        disk: { avg: number; max: number }
+      }>
+    }
+    expect(body.resolutionSeconds).toBe(300)
+    expect(body.points).toEqual([{
+      cpu: { avg: 50, max: 80 },
+      ram: { avg: 50, max: 60 },
+      disk: { avg: 65, max: 70 },
+      sampledAt: bucket,
+    }])
+  })
+
+  it('rejects unsupported ranges and non-agent monitors', async () => {
+    const id = await insertMonitor(ctx.db)
+    const { app, env } = buildApp(ctx.d1)
+
+    const badRange = await get(app, env, `/api/monitors/${id}/metric-history?range=1y`, auth)
+    expect(badRange.status).toBe(400)
+    const wrongType = await get(app, env, `/api/monitors/${id}/metric-history?range=24h`, auth)
+    expect(wrongType.status).toBe(400)
   })
 })
 

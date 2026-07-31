@@ -38,7 +38,7 @@ See the validated [data-flow diagram and detailed architecture](docs/ARCHITECTUR
 
 ## Capacity on the Cloudflare Free plan
 
-The figures below were verified on **July 28, 2026**. Cloudflare can change plan limits, so its linked documentation is the source of truth.
+The figures below were verified on **July 30, 2026**. Cloudflare can change plan limits, so its linked documentation is the source of truth.
 
 | Service | Included Free-plan capacity relevant to Pingflare |
 |---|---|
@@ -71,6 +71,7 @@ These are admission-rate estimates, not a promise that thousands of checks align
 Healthy heartbeat and agent pushes arrive through their own Worker requests, so they do not consume normal external-check admission slots. Each push still writes authoritative D1 state and counters, sparse evidence when due, alert state when needed, and one Analytics Engine point.
 
 - The supplied infrastructure agent reports **once per minute**.
+- CPU, RAM, and disk history is sampled every five minutes and kept for 30 days. It is loaded only from an agent monitor's Performance tab.
 - Start with **up to 10 healthy one-minute push sources per installation** as a Free-plan planning target, then watch D1 row-write and Worker-request usage. This is operational headroom, not a hard product limit.
 - If every push source stops together, missed-push evaluation returns to the same scheduler. For strict one-minute failure detection, count scheduled monitors, heartbeat monitors, and agents together under the two-check/minute normal budget—or the one-check/minute conservative budget.
 - **10-second reporting is not supported** by the current product or Cloudflare Cron. One 10-second source alone would generate 8,640 Worker requests and 8,640 Analytics Engine points per day before D1 and UI traffic, leaving little Free-plan safety margin as sources are added.
@@ -189,6 +190,11 @@ curl -fsSL https://your-pingflare.example/api/agent/install/YOUR_TOKEN | sudo ba
 ```
 
 The installer sends and verifies an initial heartbeat, then configures a one-minute systemd timer or root-crontab fallback. The URL and installed script contain the agent token; treat them as credentials. See the [agent guide](docs/AGENT.md) for requirements and behavior.
+
+The **Infrastructure** page shows node health, resource pressure, telemetry
+freshness, and at most five priority issues. It is intentionally container-free;
+Docker details appear only on an individual monitor when a host actually
+reports containers.
 
 ## Development and validation
 

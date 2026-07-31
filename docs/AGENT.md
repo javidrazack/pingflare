@@ -1,6 +1,8 @@
 # Pingflare Infrastructure Agent
 
-Pingflare provides a simple, zero-hassle bash script agent to monitor your infrastructure servers and Docker containers, akin to Checkmate's Capture agent.
+Pingflare provides a simple bash agent for infrastructure servers, inspired by
+Checkmate's Capture agent. Docker is optional; hosts without Docker report an
+empty container list and the infrastructure dashboard remains node-focused.
 
 ## What it Monitors
 The agent runs every minute and collects:
@@ -11,6 +13,11 @@ The agent runs every minute and collects:
 
 It pushes these metrics to your Pingflare instance via `POST /api/agent/push/:token`.
 
+The latest CPU, RAM, and disk values appear on the Infrastructure page.
+CPU/RAM history is fetched only when the monitor's Performance tab is opened.
+Pingflare keeps one regular five-minute sample plus rare transition samples for
+30 days; it does not store per-minute server metrics or host logs.
+
 ## Reporting cadence and Free-plan sizing
 
 The installed systemd timer or cron entry runs once per minute. The one-second CPU sample mentioned above is only a first-run/reboot fallback used to seed `/proc/stat` counters; it is not a ten-second or one-second reporting mode.
@@ -18,6 +25,13 @@ The installed systemd timer or cron entry runs once per minute. The one-second C
 Ten-second reporting is not supported by the current agent. Cloudflare Cron has a one-minute minimum, and a ten-second push source would consume 8,640 Worker requests and Analytics Engine points per day before its D1 writes or any dashboard/API traffic.
 
 For a Cloudflare Free-plan installation, start with up to ten healthy one-minute heartbeat and infrastructure-agent push sources combined, then monitor D1 row writes and Worker requests. Healthy pushes bypass scheduled external-check admission, but missed-push detection does not: if multiple sources stop together, their failure checks share the scheduler's two-check/minute normal budget. If every source must alert within one minute during a simultaneous outage, count all scheduled and push monitors under that shared budget. See [Architecture](ARCHITECTURE.md#capacity-model) for the full model.
+
+The history feature adds 288 regular samples per agent each day. With the
+composite primary-key write and the matching bounded retention delete after day
+30, budget for about 1,152 additional D1 row writes per agent/day at steady
+state, plus rare transition samples. Ten agents therefore add about 11,520
+history-related row writes/day, retaining useful investigation data while
+leaving headroom inside D1's 100,000-row Free allowance.
 
 ## Setup
 

@@ -93,6 +93,16 @@ export const monitorDailyRollups = sqliteTable('monitor_daily_rollups', {
   index('idx_monitor_daily_day').on(t.day),
 ])
 
+export const agentMetricSamples = sqliteTable('agent_metric_samples', {
+  monitorId: text('monitor_id').notNull().references(() => monitors.id, { onDelete: 'cascade' }),
+  sampledAt: integer('sampled_at').notNull(),
+  cpuBasisPoints: integer('cpu_basis_points').notNull(),
+  ramBasisPoints: integer('ram_basis_points').notNull(),
+  diskBasisPoints: integer('disk_basis_points').notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.monitorId, t.sampledAt] }),
+])
+
 export const schedulerLeases = sqliteTable('scheduler_leases', {
   name: text('name').primaryKey(),
   holder: text('holder').notNull(),
@@ -258,6 +268,7 @@ export type Monitor = typeof monitors.$inferSelect
 export type NewMonitor = typeof monitors.$inferInsert
 export type StatusLog = typeof statusLogs.$inferSelect
 export type MonitorDailyRollup = typeof monitorDailyRollups.$inferSelect
+export type AgentMetricSample = typeof agentMetricSamples.$inferSelect
 export type Incident = typeof incidents.$inferSelect
 export type NotificationChannel = typeof notificationChannels.$inferSelect
 export type NotificationTestRun = typeof notificationTestRuns.$inferSelect

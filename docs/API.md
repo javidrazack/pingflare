@@ -26,6 +26,7 @@ Obtain a token by calling `POST /api/auth/login`
 | GET | `/api/monitors/:id/logs` | Sparse transition/error/sample logs, supports `?hours=24&limit=500` |
 | GET | `/api/monitors/:id/incidents` | Downtime incidents |
 | GET | `/api/monitors/:id/analytics` | Consolidated exact 1/7/30/90-day uptime, daily history, count, and response average |
+| GET | `/api/monitors/:id/metric-history` | Agent CPU/RAM/disk rollups, supports `?range=2h`, `24h`, `7d`, or `30d` |
 | GET | `/api/monitors/:id/uptime` | Uptime percentage, supports `?days=90` |
 | GET | `/api/monitors/:id/daily` | Per-day uptime breakdown, supports `?days=90` |
 | GET | `/api/monitors/uptime-summary` | Batched uptime percentages, supports `?days=30` |
@@ -53,6 +54,12 @@ Uptime windows use completed and current UTC calendar days. The one-day value is
 |---|---|---|
 | GET | `/api/agent/install/:token` | Generated installation script for an agent monitor |
 | POST | `/api/agent/push/:token` | Submit CPU, RAM, disk, and Docker metrics |
+| GET | `/api/infrastructure/overview` | Current node health, resource pressure, freshness, and the top five issues |
+
+Metric history is retained for 30 days. The `2h` and `24h` ranges return
+five-minute buckets, `7d` returns 30-minute buckets, and `30d` returns two-hour
+buckets. This endpoint is authenticated and is requested by the dashboard only
+when an agent monitor's Performance tab is opened.
 
 ---
 

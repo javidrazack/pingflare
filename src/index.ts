@@ -12,6 +12,7 @@ import publicStatusRoutes from './routes/publicStatus'
 import incidentReportsRoutes from './routes/incidentReports'
 import backupRoutes from './routes/backup'
 import eventsRoutes from './routes/events'
+import infrastructureRoutes from './routes/infrastructure'
 import { runCron } from './cron'
 import { requireAuth } from './middleware/auth'
 import { recordApiRequest } from './services/analytics-engine'
@@ -80,6 +81,7 @@ app.route('/api/public/status', publicStatusRoutes)
 app.route('/api/incidents', incidentReportsRoutes)
 app.route('/api/backup', backupRoutes)
 app.route('/api/events', eventsRoutes)
+app.route('/api/infrastructure', infrastructureRoutes)
 
 app.get('/api/health', (c) => c.json({ ok: true, ts: Date.now() }))
 

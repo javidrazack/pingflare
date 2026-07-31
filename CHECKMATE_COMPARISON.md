@@ -45,22 +45,26 @@ This document analyzes the features of [Checkmate](https://github.com/bluewave-l
 
 ### Infrastructure Monitoring (CPU, RAM, Disk)
 * **Checkmate:** Yes (via Capture agent)
-* **Pingflare:** No
-* **Cloudflare Feasibility:** **Supported (Free Tier)**. This is identical to Heartbeat monitoring. A lightweight agent (like Capture or a custom script) running on the target server can send JSON payloads to a Pingflare Worker endpoint. The Worker can then store this in D1.
+* **Pingflare:** Yes. The Infrastructure page shows current fleet health,
+  pressure, and freshness; each node has on-demand CPU/RAM history.
+* **Cloudflare Feasibility:** **Implemented for the Free Tier**. The agent
+  reports each minute, while D1 stores five-minute samples for 30 days plus
+  rare transition samples.
 
 ### Docker Monitoring
 * **Checkmate:** Yes
-* **Pingflare:** No
-* **Cloudflare Feasibility:** **Supported (Free Tier)**. Similar to infrastructure monitoring, an agent on the server can query the local Docker socket and push the status to a Pingflare endpoint.
+* **Pingflare:** Optional. Container status is shown only when a host reports
+  containers; the fleet view does not assume Docker is installed.
+* **Cloudflare Feasibility:** **Implemented (Free Tier)**.
 
 ### JSON Query Monitoring
 * **Checkmate:** Yes
-* **Pingflare:** No
+* **Pingflare:** Yes
 * **Cloudflare Feasibility:** **Fully Supported (Free Tier)**. Pingflare can fetch a JSON endpoint and use simple JSONPath or similar logic to evaluate the response.
 
 ### Scheduled Maintenance
 * **Checkmate:** Yes
-* **Pingflare:** No
+* **Pingflare:** Yes
 * **Cloudflare Feasibility:** **Fully Supported (Free Tier)**. This is purely a database/logic feature. Can easily store maintenance windows in D1 and suppress alerts during those times.
 
 ### Status Pages & Incidents
@@ -95,10 +99,15 @@ If the goal is to build an uptime monitoring system **completely on Cloudflare i
    * *Constraint:* Connecting and disconnecting quickly is feasible, but extensive data reading might incur CPU time. Easily fits in Free Tier.
 5. **Advanced SSL Expiry Monitoring:** Since `fetch()` hides certificate details, fetching raw cert data requires TLS over TCP sockets.
 
-### Hard / Architectural Additions
-6. **Infrastructure & Docker Monitoring (Agent-based):**
-   * *Implementation:* Create an endpoint `POST /api/agent/push`. Users run a bash/python script on their VPS via cron that sends CPU/RAM/Docker status.
-   * *Constraint (D1 Limits):* If users send metrics every minute, 1 monitor = 1440 writes/day. The free tier allows 100k writes/day. Thus, the free tier limits you to ~69 active infrastructure monitors checking every minute. To scale, metrics should either be aggregated or old logs cleaned aggressively.
+### Implemented Architectural Addition
+6. **Infrastructure monitoring (agent-based):**
+   * *Implementation:* `POST /api/agent/push/:token` accepts one-minute health
+     reports, while D1 stores only five-minute history samples.
+   * *Constraint (D1 Limits):* Regular history adds 288 samples/day per agent.
+     Including the composite primary-key entry and steady-state retention
+     deletes, budget about 1,152 D1 row writes/agent/day for history. Pingflare
+     retains its conservative planning target of ten healthy one-minute push
+     sources rather than presenting the Free limit as a theoretical maximum.
 
 ### Out of Scope (Cloudflare Restrictions)
 * **ICMP Ping Monitoring:** Impossible without an external server.

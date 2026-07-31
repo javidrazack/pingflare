@@ -5,10 +5,18 @@
   import { api } from '$lib/api'
   import { t, locale } from '$lib/i18n'
   import { get } from 'svelte/store'
-  import type { Monitor, StatusLog, Incident, DailyUptime } from '$lib/api'
+  import type {
+    AgentMetricHistory,
+    AgentMetricRange,
+    Monitor,
+    StatusLog,
+    Incident,
+    DailyUptime,
+  } from '$lib/api'
   import StatusBadge from '$lib/components/StatusBadge.svelte'
   import UptimeChart from '$lib/components/UptimeChart.svelte'
   import ResponseTimeChart from '$lib/components/ResponseTimeChart.svelte'
+  import AgentResourceChart from '$lib/components/AgentResourceChart.svelte'
   import Icon from '$lib/components/Icon.svelte'
   import PageLoader from '$lib/components/PageLoader.svelte'
   import HeaderPattern from '$lib/components/HeaderPattern.svelte'
@@ -52,6 +60,11 @@
   $: requestedTab = $page.url.searchParams.get('tab')
   $: activeTab = tabs.includes(requestedTab as DetailTab) ? requestedTab as DetailTab : 'overview'
   let metrics: { cpu: number; ram: number; disk: number; docker?: Array<{ name: string; status: string; health?: string }> } | null = null
+  let metricRange: AgentMetricRange = '24h'
+  let metricHistory: AgentMetricHistory | null = null
+  let metricHistoryLoading = false
+  let metricHistoryError = ''
+  let lastMetricRequest = ''
 
   $: {
     try {
@@ -60,6 +73,26 @@
         : null
     } catch {
       metrics = null
+    }
+  }
+
+  async function loadMetricHistory(range: AgentMetricRange) {
+    metricHistoryLoading = true
+    metricHistoryError = ''
+    try {
+      metricHistory = await api.monitors.metricHistory(id, range)
+    } catch (e) {
+      metricHistoryError = String(e)
+    } finally {
+      metricHistoryLoading = false
+    }
+  }
+
+  $: if (monitor?.type === 'agent' && activeTab === 'performance') {
+    const requestKey = `${id}:${metricRange}`
+    if (requestKey !== lastMetricRequest) {
+      lastMetricRequest = requestKey
+      void loadMetricHistory(metricRange)
     }
   }
 
@@ -372,8 +405,52 @@
       </div>
     </div>
 
+    {#if monitor.type === 'agent'}
+    <div class="card" class:hidden={activeTab !== 'performance'}>
+      <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="text-sm font-semibold" style="color: rgb(var(--text))">CPU and RAM history</h2>
+          <p class="mt-1 text-xs" style="color: rgb(var(--text-muted))">
+            Loaded only when this tab is opened. Stored as five-minute samples for 30 days.
+          </p>
+        </div>
+        <div class="flex rounded-lg p-1" style="background: rgb(var(--bg-muted))" aria-label="History range">
+          {#each ['2h', '24h', '7d', '30d'] as range}
+            <button
+              type="button"
+              class="min-h-9 rounded-md px-3 text-xs font-semibold transition-colors"
+              class:bg-primary-solid={metricRange === range}
+              style={metricRange !== range ? 'color: rgb(var(--text-muted))' : ''}
+              aria-pressed={metricRange === range}
+              on:click={() => metricRange = range as AgentMetricRange}
+            >{range}</button>
+          {/each}
+        </div>
+      </div>
+      {#if metricHistoryLoading}
+        <div class="flex min-h-52 items-center justify-center gap-2 text-sm" style="color: rgb(var(--text-muted))">
+          <Icon name="arrow-path" size={16} cls="animate-spin" />
+          Loading resource history…
+        </div>
+      {:else if metricHistoryError}
+        <div class="flex min-h-36 flex-col items-center justify-center gap-3 text-sm text-red-400">
+          <span>Resource history could not be loaded.</span>
+          <button
+            type="button"
+            class="btn-outline text-xs"
+            on:click={() => {
+              lastMetricRequest = ''
+              void loadMetricHistory(metricRange)
+            }}
+          >Try again</button>
+        </div>
+      {:else if metricHistory}
+        <AgentResourceChart history={metricHistory} />
+      {/if}
+    </div>
+    {/if}
 
-<div class="card" class:hidden={activeTab !== 'performance'}>
+    <div class="card" class:hidden={activeTab !== 'performance'}>
       <h2 class="text-sm font-semibold mb-4" style="color: rgb(var(--text))">{$t('monitor.uptime90d')}</h2>
       <UptimeChart data={daily} />
     </div>

@@ -22,6 +22,15 @@ function roundedPercent(up: number, total: number): number | null {
   return total > 0 ? Math.round((up / total) * 10000) / 100 : null
 }
 
+const AGENT_METRIC_RANGES = {
+  '2h': { seconds: 2 * 3600, resolution: 300 },
+  '24h': { seconds: 24 * 3600, resolution: 300 },
+  '7d': { seconds: 7 * 86400, resolution: 1800 },
+  '30d': { seconds: 30 * 86400, resolution: 7200 },
+} as const
+
+type AgentMetricRange = keyof typeof AGENT_METRIC_RANGES
+
 router.get('/uptime-summary', async (c) => {
   const db = getDb(c.env.DB)
   const days = boundedInt(c.req.query('days'), 30, 1, 365)
@@ -41,6 +50,72 @@ router.get('/uptime-summary', async (c) => {
   }
   c.header('X-Pingflare-Aggregate-Cache', result.cacheStatus)
   return c.json({ days, uptimes })
+})
+
+router.get('/:id/metric-history', async (c) => {
+  const id = c.req.param('id')
+  const requestedRange = c.req.query('range') ?? '24h'
+  if (!(requestedRange in AGENT_METRIC_RANGES)) {
+    return c.json({ error: 'Range must be one of 2h, 24h, 7d, or 30d' }, 400)
+  }
+
+  const db = getDb(c.env.DB)
+  const monitor = await db.query.monitors.findFirst({ where: eq(monitors.id, id) })
+  if (!monitor) return c.json({ error: 'Not found' }, 404)
+  if (monitor.type !== 'agent') {
+    return c.json({ error: 'Metric history is available only for agent monitors' }, 400)
+  }
+
+  const range = requestedRange as AgentMetricRange
+  const { seconds, resolution } = AGENT_METRIC_RANGES[range]
+  const now = Math.floor(Date.now() / 1000)
+  const since = now - seconds
+  const result = await c.env.DB.prepare(`
+    SELECT
+      CAST(sampled_at / ? AS INTEGER) * ? AS sampled_at,
+      ROUND(AVG(cpu_basis_points)) / 100.0 AS cpu_avg,
+      MAX(cpu_basis_points) / 100.0 AS cpu_max,
+      ROUND(AVG(ram_basis_points)) / 100.0 AS ram_avg,
+      MAX(ram_basis_points) / 100.0 AS ram_max,
+      ROUND(AVG(disk_basis_points)) / 100.0 AS disk_avg,
+      MAX(disk_basis_points) / 100.0 AS disk_max
+    FROM agent_metric_samples
+    WHERE monitor_id = ?
+      AND sampled_at >= ?
+    GROUP BY CAST(sampled_at / ? AS INTEGER)
+    ORDER BY sampled_at
+  `).bind(
+    resolution,
+    resolution,
+    id,
+    since,
+    resolution,
+  ).all<{
+    sampled_at: number
+    cpu_avg: number
+    cpu_max: number
+    ram_avg: number
+    ram_max: number
+    disk_avg: number
+    disk_max: number
+  }>()
+
+  return c.json({
+    monitorId: id,
+    range,
+    resolutionSeconds: resolution,
+    thresholds: {
+      cpu: monitor.cpuThreshold,
+      ram: monitor.ramThreshold,
+      disk: monitor.diskThreshold,
+    },
+    points: result.results.map((row) => ({
+      sampledAt: Number(row.sampled_at),
+      cpu: { avg: Number(row.cpu_avg), max: Number(row.cpu_max) },
+      ram: { avg: Number(row.ram_avg), max: Number(row.ram_max) },
+      disk: { avg: Number(row.disk_avg), max: Number(row.disk_max) },
+    })),
+  })
 })
 
 router.get('/:id/logs', async (c) => {

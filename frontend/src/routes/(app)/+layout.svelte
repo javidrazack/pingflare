@@ -73,12 +73,13 @@
   }
 
   $: nav = [
-    { href: '/',          label: $t('nav.dashboard'),     icon: 'home'                 },
-    { href: '/monitors',  label: $t('nav.monitors'),      icon: 'signal'               },
-    { href: '/status',    label: $t('nav.statusPages'),   icon: 'globe'                },
-    { href: '/incidents', label: $t('nav.incidents'),     icon: 'exclamation-triangle' },
-    { href: '/settings',  label: $t('nav.notifications'), icon: 'bell'                 },
-    { href: '/config',    label: $t('nav.config'),        icon: 'cog'                  },
+    { href: '/',               label: $t('nav.dashboard'),      icon: 'home'                 },
+    { href: '/infrastructure', label: $t('nav.infrastructure'), icon: 'server-stack'         },
+    { href: '/monitors',       label: $t('nav.monitors'),       icon: 'signal'               },
+    { href: '/status',         label: $t('nav.statusPages'),    icon: 'globe'                },
+    { href: '/incidents',      label: $t('nav.incidents'),      icon: 'exclamation-triangle' },
+    { href: '/settings',       label: $t('nav.notifications'),  icon: 'bell'                 },
+    { href: '/config',         label: $t('nav.config'),         icon: 'cog'                  },
   ]
 
   function isActive(href: string, pathname: string) {

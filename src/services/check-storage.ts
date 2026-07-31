@@ -57,6 +57,7 @@ type RefreshInboundObservation = (
 ) => CheckObservation | null
 
 const DIAGNOSTIC_SAMPLE_SECONDS = 10 * 60
+const AGENT_METRIC_SAMPLE_SECONDS = 5 * 60
 
 function utcDay(timestamp: number): number {
   return timestamp - (timestamp % 86400)
@@ -70,11 +71,18 @@ function shouldPersistDiagnostic(observation: CheckObservation): boolean {
     !== Math.floor(observation.checkedAt / DIAGNOSTIC_SAMPLE_SECONDS)
 }
 
+function metricBasisPoints(value: number | undefined): number | null {
+  if (value === undefined || !Number.isFinite(value)) return null
+  return Math.round(Math.min(100, Math.max(0, value)) * 100)
+}
+
 /**
  * Persists the authoritative scheduling cursor and exact UTC-day counters.
  *
  * Each observation uses two statements (archive-if-needed and authoritative
  * monitor update), plus one sparse diagnostic log statement when required.
+ * Agent pushes add one five-minute metric sample and, only on a status
+ * transition, one exact-timestamp sample.
  * Inbound cron observations apply the same compare-and-swap guard to every
  * statement so a newer heartbeat/agent push wins atomically.
  * Callers should keep batches small enough to stay under D1's per-invocation
@@ -260,6 +268,44 @@ export async function persistCheckObservations(
       guardLastCheckedAt,
       guardLastPingAt,
     ))
+
+    const cpuBasisPoints = metricBasisPoints(observation.agentMetrics?.cpu)
+    const ramBasisPoints = metricBasisPoints(observation.agentMetrics?.ram)
+    const diskBasisPoints = metricBasisPoints(observation.agentMetrics?.disk)
+    if (
+      observation.source === 'agent'
+      && cpuBasisPoints !== null
+      && ramBasisPoints !== null
+      && diskBasisPoints !== null
+    ) {
+      const sampleTimes = [
+        observation.checkedAt - (observation.checkedAt % AGENT_METRIC_SAMPLE_SECONDS),
+      ]
+      if (
+        observation.status !== observation.monitor.lastStatus
+        && sampleTimes[0] !== observation.checkedAt
+      ) {
+        sampleTimes.push(observation.checkedAt)
+      }
+      for (const sampledAt of sampleTimes) {
+        statements.push(env.DB.prepare(`
+          INSERT OR IGNORE INTO agent_metric_samples (
+            monitor_id, sampled_at, cpu_basis_points, ram_basis_points, disk_basis_points
+          )
+          SELECT id, ?, ?, ?, ?
+          FROM monitors
+          WHERE id = ?
+            AND observation_revision = ?
+        `).bind(
+          sampledAt,
+          cpuBasisPoints,
+          ramBasisPoints,
+          diskBasisPoints,
+          observation.monitor.id,
+          observationRevision,
+        ))
+      }
+    }
 
     let diagnosticResultIndex: number | undefined
     if (shouldPersistDiagnostic(observation)) {
