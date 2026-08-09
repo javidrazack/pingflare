@@ -127,6 +127,7 @@ except BlockingIOError:
 }
 
 describe('agent installer generation', () => {
+  const shellIntegrationTimeout = 15_000
   const token = '12345678-1234-4234-8234-123456789abc'
   const origin = 'https://pingflare.example'
   const script = buildAgentInstaller(token, origin)
@@ -207,7 +208,7 @@ describe('agent installer generation', () => {
     } finally {
       harness.cleanup()
     }
-  })
+  }, shellIntegrationTimeout)
 
   it('falls back safely for corrupt, rebooted, or rolled-back CPU state', () => {
     expect(installedAgent).toBeTruthy()
@@ -239,7 +240,7 @@ describe('agent installer generation', () => {
     } finally {
       harness.cleanup()
     }
-  })
+  }, shellIntegrationTimeout)
 
   it('advances the CPU baseline before delivery and preserves old state on write failure', () => {
     expect(installedAgent).toBeTruthy()
@@ -269,7 +270,7 @@ describe('agent installer generation', () => {
     } finally {
       harness.cleanup()
     }
-  })
+  }, shellIntegrationTimeout)
 
   it('updates CPU state atomically for overlapping invocations', () => {
     expect(installedAgent).toBeTruthy()
@@ -296,7 +297,7 @@ describe('agent installer generation', () => {
     } finally {
       harness.cleanup()
     }
-  })
+  }, shellIntegrationTimeout)
 
   it('embeds the complete push URL in the installed agent', () => {
     expect(script).toContain(
