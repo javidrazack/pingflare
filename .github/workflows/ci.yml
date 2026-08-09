@@ -57,20 +57,35 @@ jobs:
         continue-on-error: true
         run: npx vitest list frontend/src/lib/infrastructure.test.ts > "$RUNNER_TEMP/formatter-collection.log" 2>&1
 
-      - name: 🧪 Diagnosis - formatter tests not found
+      - name: 🧪 Classify formatter collection failure
         if: always() && steps.formatter-collection.outcome == 'failure'
-        continue-on-error: true
-        run: grep -q "No test files found" "$RUNNER_TEMP/formatter-collection.log"
+        id: formatter-diagnosis
+        run: |
+          kind=other
+          if grep -q "No test files found" "$RUNNER_TEMP/formatter-collection.log"; then
+            kind=no-tests
+          elif grep -Eq "Failed to load|Failed to resolve|Cannot find|ERR_MODULE_NOT_FOUND" "$RUNNER_TEMP/formatter-collection.log"; then
+            kind=module-resolution
+          elif grep -Eq "ReferenceError|not defined" "$RUNNER_TEMP/formatter-collection.log"; then
+            kind=missing-globals
+          fi
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
 
-      - name: 🧪 Diagnosis - formatter module resolution failed
-        if: always() && steps.formatter-collection.outcome == 'failure'
-        continue-on-error: true
-        run: grep -Eq "Failed to load|Failed to resolve|Cannot find|ERR_MODULE_NOT_FOUND" "$RUNNER_TEMP/formatter-collection.log"
+      - name: 🧪 Confirmed - formatter tests not found
+        if: always() && steps.formatter-diagnosis.outputs.kind == 'no-tests'
+        run: ':'
 
-      - name: 🧪 Diagnosis - formatter globals unavailable
-        if: always() && steps.formatter-collection.outcome == 'failure'
-        continue-on-error: true
-        run: grep -Eq "ReferenceError|not defined" "$RUNNER_TEMP/formatter-collection.log"
+      - name: 🧪 Confirmed - formatter module resolution failed
+        if: always() && steps.formatter-diagnosis.outputs.kind == 'module-resolution'
+        run: ':'
+
+      - name: 🧪 Confirmed - formatter globals unavailable
+        if: always() && steps.formatter-diagnosis.outputs.kind == 'missing-globals'
+        run: ':'
+
+      - name: 🧪 Confirmed - other formatter collection failure
+        if: always() && steps.formatter-diagnosis.outputs.kind == 'other'
+        run: ':'
 
       - name: 🧪 Test resource signal formatting
         if: always()
