@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-08-09
+
 ### Added
 - A fleet-level Infrastructure dashboard with current agent health, CPU/RAM/disk pressure, freshness, bounded priority issues, and exact strongest-signal explanations
 - On-demand CPU, RAM, and disk history for agent monitors across 2-hour, 24-hour, 7-day, and 30-day ranges
@@ -11,6 +13,9 @@
 - Docker is optional throughout agent setup and infrastructure triage; ordinary Linux hosts remain first-class monitored nodes
 - Dashboard hierarchy, responsive layouts, keyboard behavior, focus treatment, reduced-motion support, feedback, and empty/error states were polished across authenticated and public views
 - Infrastructure APIs now expose the same route set in Cloudflare Worker and Docker/SQLite deployments
+
+### Security
+- Updated SvelteKit, Hono, Wrangler, and affected transitive packages to patched releases so the production and development dependency audits pass without known vulnerabilities
 
 ### Documentation
 - Refreshed the README, feature reference, API, architecture, Analytics Engine, infrastructure-agent, localization, product, and local-development guides against the current implementation

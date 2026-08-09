@@ -1,6 +1,6 @@
 {
   "name": "pingflare",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "private": true,
   "workspaces": [
     "frontend"
@@ -49,7 +49,7 @@
   "dependencies": {
     "@hono/node-server": "^2.0.4",
     "@sveltejs/adapter-static": "3.0.10",
-    "@sveltejs/kit": "2.70.1",
+    "@sveltejs/kit": "2.70.2",
     "better-sqlite3": "^12.10.0",
     "bits-ui": "2.18.1",
     "drizzle-orm": "^0.45.2",
