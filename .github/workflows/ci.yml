@@ -40,86 +40,8 @@ jobs:
         env:
           WRANGLER_LOG_PATH: /tmp/pingflare-wrangler-migrations.log
 
-      - name: 🧪 Test alerting and scheduling
-        run: npx vitest run src/test/alertManager.test.ts src/test/checkStorage.test.ts src/test/cron.test.ts src/test/cronQueryBudget.test.ts
-
-      - name: 🧪 Test API and infrastructure routes
-        if: always()
-        run: npx vitest run src/test/backup.test.ts src/test/history.test.ts src/test/infrastructure.test.ts src/test/monitorSecurity.test.ts src/test/notifications.test.ts src/test/publicStatus.test.ts src/test/setBasedRoutes.test.ts
-
-      - name: 🧪 Test migrations and agent installer
-        if: always()
-        run: npx vitest run src/test/agentInstaller.test.ts src/test/legacyMigrationReconcile.test.ts src/test/migrations.test.ts
-
-      - name: 🧪 Collect infrastructure formatter tests
-        if: always()
-        id: formatter-collection
-        continue-on-error: true
-        run: npx vitest list frontend/src/lib/infrastructure.test.ts > "$RUNNER_TEMP/formatter-collection.log" 2>&1
-
-      - name: 🧪 Classify formatter collection failure
-        if: always() && steps.formatter-collection.outcome == 'failure'
-        id: formatter-diagnosis
-        run: |
-          kind=other
-          if grep -q "No test files found" "$RUNNER_TEMP/formatter-collection.log"; then
-            kind=no-tests
-          elif grep -Eq "(Failed to load|Failed to resolve|Cannot find|ERR_MODULE_NOT_FOUND).*infrastructure-types" "$RUNNER_TEMP/formatter-collection.log"; then
-            kind=types-module
-          elif grep -Eq "(Failed to load|Failed to resolve|Cannot find|ERR_MODULE_NOT_FOUND).*infrastructure\\.(ts|js)" "$RUNNER_TEMP/formatter-collection.log"; then
-            kind=formatter-module
-          elif grep -Eq "(Failed to load|Failed to resolve|Cannot find|ERR_MODULE_NOT_FOUND).*vitest" "$RUNNER_TEMP/formatter-collection.log"; then
-            kind=vitest-module
-          elif grep -Eq "Failed to load|Failed to resolve|Cannot find|ERR_MODULE_NOT_FOUND" "$RUNNER_TEMP/formatter-collection.log"; then
-            kind=module-resolution
-          elif grep -Eq "ReferenceError|not defined" "$RUNNER_TEMP/formatter-collection.log"; then
-            kind=missing-globals
-          fi
-          echo "kind=$kind" >> "$GITHUB_OUTPUT"
-
-      - name: 🧪 Confirmed - formatter tests not found
-        if: always() && steps.formatter-diagnosis.outputs.kind == 'no-tests'
-        run: ':'
-
-      - name: 🧪 Confirmed - formatter module resolution failed
-        if: always() && steps.formatter-diagnosis.outputs.kind == 'module-resolution'
-        run: ':'
-
-      - name: 🧪 Confirmed - formatter type module unresolved
-        if: always() && steps.formatter-diagnosis.outputs.kind == 'types-module'
-        run: ':'
-
-      - name: 🧪 Confirmed - formatter source module unresolved
-        if: always() && steps.formatter-diagnosis.outputs.kind == 'formatter-module'
-        run: ':'
-
-      - name: 🧪 Confirmed - Vitest module unresolved
-        if: always() && steps.formatter-diagnosis.outputs.kind == 'vitest-module'
-        run: ':'
-
-      - name: 🧪 Confirmed - formatter globals unavailable
-        if: always() && steps.formatter-diagnosis.outputs.kind == 'missing-globals'
-        run: ':'
-
-      - name: 🧪 Confirmed - other formatter collection failure
-        if: always() && steps.formatter-diagnosis.outputs.kind == 'other'
-        run: ':'
-
-      - name: 🧪 Test resource signal formatting
-        if: always()
-        run: npx vitest run frontend/src/lib/infrastructure.test.ts -t "describes resource pressure"
-
-      - name: 🧪 Test telemetry age formatting
-        if: always()
-        run: npx vitest run frontend/src/lib/infrastructure.test.ts -t "describes stale telemetry"
-
-      - name: 🧪 Test Docker signal formatting
-        if: always()
-        run: npx vitest run frontend/src/lib/infrastructure.test.ts -t "describes the primary Docker failure"
-
-      - name: 🧪 Test focused units
-        if: always()
-        run: npx vitest run src/test/agentStatus.test.ts src/test/analyticsEngine.test.ts src/test/dns.test.ts src/test/http.test.ts src/test/index.test.ts src/test/ping.test.ts src/test/responseCache.test.ts
+      - name: 🧪 Run backend tests
+        run: npm test
 
       - name: 🛡️ Audit backend dependencies
         run: npm audit --audit-level=high
@@ -146,6 +68,9 @@ jobs:
 
       - name: 🔎 Type-check frontend (svelte-check)
         run: npm run check -w frontend
+
+      - name: 🧪 Run frontend tests
+        run: npm run test -w frontend
 
       - name: 🏗️ Build frontend
         run: npm run build -w frontend
