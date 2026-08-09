@@ -1,4 +1,4 @@
-import type { InfrastructureSignal } from './infrastructure-types'
+import type { InfrastructureSignal } from './infrastructure-types.js'
 
 function formatMetric(value: number, locale: string): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value)
