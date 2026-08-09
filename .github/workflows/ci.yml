@@ -41,7 +41,7 @@ jobs:
           WRANGLER_LOG_PATH: /tmp/pingflare-wrangler-migrations.log
 
       - name: 🧪 Run tests
-        run: npm test
+        run: npm test -- --reporter=github-actions
 
       - name: 🛡️ Audit backend dependencies
         run: npm audit --audit-level=high
