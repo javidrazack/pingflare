@@ -51,6 +51,10 @@ jobs:
         if: always()
         run: npx vitest run src/test/agentInstaller.test.ts src/test/legacyMigrationReconcile.test.ts src/test/migrations.test.ts
 
+      - name: 🧪 Collect infrastructure formatter tests
+        if: always()
+        run: npx vitest list frontend/src/lib/infrastructure.test.ts
+
       - name: 🧪 Test resource signal formatting
         if: always()
         run: npx vitest run frontend/src/lib/infrastructure.test.ts -t "describes resource pressure"
