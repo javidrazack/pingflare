@@ -69,7 +69,21 @@ exit 1
   chmodSync(curlShim, 0o700)
 
   const dockerShim = join(shimDir, 'docker')
-  writeFileSync(dockerShim, '#!/usr/bin/env bash\nexit 1\n')
+  writeFileSync(dockerShim, `#!/usr/bin/env bash
+set -eu
+if [ "\${PINGFLARE_DOCKER_INSPECT_JSON:-}" = "" ]; then
+  exit 1
+fi
+if [ "\${1:-}" = "ps" ]; then
+  printf '%s\\n' init-id web-id
+  exit 0
+fi
+if [ "\${1:-}" = "inspect" ]; then
+  printf '%s\\n' "$PINGFLARE_DOCKER_INSPECT_JSON"
+  exit 0
+fi
+exit 1
+`)
   chmodSync(dockerShim, 0o700)
 
   const mvShim = join(shimDir, 'mv')
@@ -321,6 +335,69 @@ describe('agent installer generation', () => {
     expect(script).toContain('grep -v -F "$SCRIPT_PATH"')
     expect(script).toContain('systemctl disable --now pingflare-agent.timer')
   })
+
+  it('derives one-shot containers from Docker Compose dependency labels', () => {
+    expect(installedAgent).toContain('docker inspect $docker_ids')
+    expect(installedAgent).toContain('com.docker.compose.depends_on')
+    expect(installedAgent).toContain(':service_completed_successfully:')
+    expect(installedAgent).toContain('oneShot:')
+  })
+
+  it('reports Compose completion intent in Docker metrics', () => {
+    expect(installedAgent).toBeTruthy()
+    if (!installedAgent) return
+
+    const harness = createAgentHarness(installedAgent)
+    try {
+      harness.writeCpuStat(harness.procStatPath, '100 0 50 800 20 0 0 0 0 0')
+      harness.writeCpuStat(harness.nextStatPath, '130 0 70 850 20 0 0 0 0 0')
+      const dockerInspect = JSON.stringify([
+        {
+          Id: 'init-id',
+          Name: '/posthog-kafka-init-1',
+          State: { Status: 'exited', ExitCode: 0 },
+          Config: { Labels: {
+            'com.docker.compose.project': 'posthog',
+            'com.docker.compose.service': 'kafka-init',
+          } },
+        },
+        {
+          Id: 'web-id',
+          Name: '/posthog-web-1',
+          State: { Status: 'running', ExitCode: 0, Health: { Status: 'healthy' } },
+          Config: { Labels: {
+            'com.docker.compose.project': 'posthog',
+            'com.docker.compose.service': 'web',
+            'com.docker.compose.depends_on': 'kafka-init:service_completed_successfully:false',
+          } },
+        },
+      ])
+
+      const result = harness.runAgent({ PINGFLARE_DOCKER_INSPECT_JSON: dockerInspect })
+      expect(result.status, result.stderr).toBe(0)
+      const payload = JSON.parse(readFileSync(harness.capturePath, 'utf8')) as {
+        docker: Array<{ name: string; status: string; health: string; oneShot: boolean }>
+      }
+      expect(payload.docker).toEqual([
+        {
+          id: 'init-id',
+          name: 'posthog-kafka-init-1',
+          status: 'exited',
+          health: 'Exited (0)',
+          oneShot: true,
+        },
+        {
+          id: 'web-id',
+          name: 'posthog-web-1',
+          status: 'running',
+          health: 'healthy',
+          oneShot: false,
+        },
+      ])
+    } finally {
+      harness.cleanup()
+    }
+  }, shellIntegrationTimeout)
 
   it('only reports success after the first heartbeat and scheduler setup', () => {
     const firstHeartbeat = script.indexOf('Sending the first infrastructure heartbeat')

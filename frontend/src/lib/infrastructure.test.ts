@@ -1,6 +1,6 @@
 /// <reference types="vitest/globals" />
 
-import { describeInfrastructureSignal } from './infrastructure'
+import { describeInfrastructureSignal, dockerContainerNeedsAttention } from './infrastructure'
 
 describe('infrastructure signal descriptions', () => {
   it('describes resource pressure with the observed value and configured threshold', () => {
@@ -48,5 +48,35 @@ describe('infrastructure signal descriptions', () => {
       containerHealth: 'unhealthy',
       affectedContainers: 1,
     })).toBe('Docker container web is unhealthy')
+  })
+})
+
+describe('dockerContainerNeedsAttention', () => {
+  it('treats a successful one-shot exit as completed', () => {
+    expect(dockerContainerNeedsAttention({
+      name: 'kafka-init',
+      status: 'exited',
+      health: 'exited (0) 3 hours ago',
+    })).toBe(false)
+  })
+
+  it('keeps failed and ambiguous exits actionable', () => {
+    expect(dockerContainerNeedsAttention({
+      name: 'worker',
+      status: 'exited',
+      health: 'exited (1) 3 hours ago',
+    })).toBe(true)
+    expect(dockerContainerNeedsAttention({ name: 'worker', status: 'exited' })).toBe(true)
+    expect(dockerContainerNeedsAttention({
+      name: 'worker',
+      status: 'exited',
+      health: 'exited (0) 3 hours ago',
+    })).toBe(true)
+    expect(dockerContainerNeedsAttention({
+      name: 'prepare-data',
+      status: 'exited',
+      health: 'exited (0) 3 hours ago',
+      oneShot: true,
+    })).toBe(false)
   })
 })

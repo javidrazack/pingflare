@@ -259,9 +259,39 @@ disk_usage=\${disk_usage:-0}
 
 docker_containers="[]"
 if command -v docker >/dev/null 2>&1; then
-  if docker_rows=$(docker ps -a --format '{{json .}}' 2>/dev/null); then
-    docker_containers=$(printf '%s\\n' "$docker_rows" | jq -s -c \
-      '[.[] | {id: .ID, name: .Names, status: (.State // ""), health: (.Status // "")}]')
+  if docker_ids=$(docker ps -aq 2>/dev/null); then
+    if [ -n "$docker_ids" ]; then
+      if docker_rows=$(docker inspect $docker_ids 2>/dev/null); then
+        docker_containers=$(printf '%s\\n' "$docker_rows" | jq -c '
+          . as $all |
+          [.[] |
+            ((.Config.Labels // {})["com.docker.compose.project"] // "") as $project |
+            ((.Config.Labels // {})["com.docker.compose.service"] // "") as $service |
+            {
+              id: (.Id // ""),
+              name: ((.Name // "") | ltrimstr("/")),
+              status: (.State.Status // ""),
+              health: (
+                if (.State.Health.Status // "") != "" then .State.Health.Status
+                elif (.State.Status // "") == "exited" then "Exited (\\(.State.ExitCode // -1))"
+                else ""
+                end
+              ),
+              oneShot: (
+                $project != "" and $service != "" and
+                ([$all[] |
+                  select((((.Config.Labels // {})["com.docker.compose.project"] // "") == $project)) |
+                  ((.Config.Labels // {})["com.docker.compose.depends_on"] // "") |
+                  split(",")[] |
+                  select(startswith($service + ":service_completed_successfully:"))
+                ] | length > 0)
+              )
+            }
+          ]')
+      else
+        echo "Warning: Docker container metadata is unavailable." >&2
+      fi
+    fi
   else
     echo "Warning: Docker is installed but its daemon is unavailable." >&2
   fi

@@ -20,6 +20,7 @@
   import Icon from '$lib/components/Icon.svelte'
   import PageLoader from '$lib/components/PageLoader.svelte'
   import HeaderPattern from '$lib/components/HeaderPattern.svelte'
+  import { dockerContainerNeedsAttention } from '$lib/infrastructure'
   import { formatRelative, formatDuration, formatTs, formatUptime, parseTags } from '$lib/utils'
 
   function logMsg(msg: string | null): string {
@@ -59,7 +60,7 @@
   type DetailTab = typeof tabs[number]
   $: requestedTab = $page.url.searchParams.get('tab')
   $: activeTab = tabs.includes(requestedTab as DetailTab) ? requestedTab as DetailTab : 'overview'
-  let metrics: { cpu: number; ram: number; disk: number; docker?: Array<{ name: string; status: string; health?: string }> } | null = null
+  let metrics: { cpu: number; ram: number; disk: number; docker?: Array<{ name: string; status: string; health?: string; oneShot?: boolean }> } | null = null
   let metricRange: AgentMetricRange = '24h'
   let metricHistory: AgentMetricHistory | null = null
   let metricHistoryLoading = false
@@ -533,7 +534,7 @@
           {#each metrics.docker as container}
             <div class="flex items-center justify-between py-2 text-sm border-b last:border-b-0" style="border-color: var(--border-color)">
               <div class="flex items-center gap-2">
-                <StatusBadge status={container.status !== 'running' || container.health?.includes('unhealthy') ? 'down' : 'up'} />
+                <StatusBadge status={dockerContainerNeedsAttention(container) ? 'down' : 'up'} />
                 <span class="font-medium">{container.name}</span>
               </div>
               <div class="text-xs font-mono" style="color: rgb(var(--text-muted))">

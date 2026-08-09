@@ -122,6 +122,7 @@ describe('/api/infrastructure/overview', () => {
       lastStatus: 'down',
       lastCheckedAt: now,
       lastMetrics: snapshot(20, 30, 40, now, [
+        { id: 'kafka-init', name: 'kafka-init', status: 'exited', health: 'Exited (0) 1 hour ago' },
         { id: 'web', name: 'web', status: 'running', health: 'unhealthy' },
         { id: 'jobs', name: 'jobs', status: 'exited' },
       ], 'down'),

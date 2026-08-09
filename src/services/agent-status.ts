@@ -5,6 +5,7 @@ export interface AgentContainer {
   name: string
   status: string
   health?: string
+  oneShot?: boolean
 }
 
 export interface AgentPayload {
@@ -18,6 +19,31 @@ export interface AgentSnapshot extends AgentPayload {
   status: 'up' | 'down'
   message: string
   evaluatedAt: number
+}
+
+const SUCCESSFUL_EXIT = /^exited \(0\)(?:\s|$)/i
+const LEGACY_ONE_SHOT_NAME = /(?:^|[-_.])(init|migrate|migration|setup)(?:[-_.]|$)/i
+
+/**
+ * Docker Compose init/migration services are expected to stop after they have
+ * completed. The current agent derives that intent from Compose's
+ * `service_completed_successfully` dependency labels. The narrow name fallback
+ * keeps older installed agents compatible with conventional init job names.
+ *
+ * Keep missing or non-zero exit codes actionable: older/custom agents that do
+ * not send the detailed status must not accidentally hide a crashed service.
+ */
+export function containerNeedsAttention(container: AgentContainer): boolean {
+  if (container.status === 'running') {
+    return container.health?.includes('unhealthy') ?? false
+  }
+
+  return !(
+    container.status === 'exited'
+    && typeof container.health === 'string'
+    && SUCCESSFUL_EXIT.test(container.health)
+    && (container.oneShot === true || LEGACY_ONE_SHOT_NAME.test(container.name))
+  )
 }
 
 const isPercent = (value: unknown): value is number =>
@@ -41,7 +67,8 @@ export function parseAgentPayload(value: unknown): AgentPayload | null {
       container.name.length > 256 ||
       container.status.length > 128 ||
       (container.health !== undefined &&
-        (typeof container.health !== 'string' || container.health.length > 256))
+        (typeof container.health !== 'string' || container.health.length > 256)) ||
+      (container.oneShot !== undefined && typeof container.oneShot !== 'boolean')
     ) {
       return null
     }
@@ -50,6 +77,7 @@ export function parseAgentPayload(value: unknown): AgentPayload | null {
       name: container.name,
       status: container.status.toLowerCase(),
       health: typeof container.health === 'string' ? container.health.toLowerCase() : undefined,
+      oneShot: typeof container.oneShot === 'boolean' ? container.oneShot : undefined,
     })
   }
 
@@ -73,8 +101,7 @@ export function evaluateAgentPayload(
   }
 
   for (const container of payload.docker) {
-    const unhealthy = container.health?.includes('unhealthy') ?? false
-    if (container.status !== 'running' || unhealthy) {
+    if (containerNeedsAttention(container)) {
       reasons.push(
         `Docker container ${container.name} is ${container.status}` +
         (container.health ? ` (${container.health})` : ''),

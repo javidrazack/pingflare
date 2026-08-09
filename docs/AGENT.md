@@ -11,7 +11,7 @@ The agent runs every minute and collects:
 1. **CPU Usage**: Calculated from the change in `/proc/stat` counters since the previous heartbeat. This represents average CPU utilization over the heartbeat interval; the first run after installation or reboot uses a one-second sample to seed the counters.
 2. **RAM Usage**: Calculated from `/proc/meminfo`.
 3. **Disk Usage**: Extracted via `df` (checks the root `/` mount).
-4. **Docker Containers (optional)**: When Docker is installed and accessible, extracts running, stopped, and unhealthy container states via `docker ps -a` and `jq`.
+4. **Docker Containers (optional)**: When Docker is installed and accessible, extracts running, stopped, and unhealthy container states plus Docker Compose lifecycle intent via `docker inspect` and `jq`.
 
 It pushes these metrics to your Pingflare instance via `POST /api/agent/push/:token`.
 
@@ -61,7 +61,7 @@ leaving headroom inside D1's 100,000-row Free allowance.
 
 1. Open your Pingflare dashboard.
 2. Click **Create Monitor** and select the **Agent / Infra** tab.
-3. Configure optional maximum CPU, RAM, or disk thresholds. If a threshold is breached, a reported container is not running, or a running container is unhealthy, the monitor triggers a downtime incident and alert workflow.
+3. Configure optional maximum CPU, RAM, or disk thresholds. If a threshold is breached, a reported service container is not running, or a running container is unhealthy, the monitor triggers a downtime incident and alert workflow. A container that exits successfully and is referenced by Docker Compose with `condition: service_completed_successfully` is treated as a completed one-shot job, not an outage. Conventional init/migration names remain compatible with older installed agents.
 4. Save the monitor.
 5. In the monitor details page, you will see an **Agent Installation** command block.
 6. Copy the command and paste it into the terminal of a sudo-capable user on the server you wish to monitor:

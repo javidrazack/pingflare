@@ -6,7 +6,11 @@ import {
   processAlert,
 } from '../services/alert-manager'
 import { persistInboundObservationWithRetry } from '../services/check-storage'
-import { evaluateAgentPayload, parseAgentPayload } from '../services/agent-status'
+import {
+  containerNeedsAttention,
+  evaluateAgentPayload,
+  parseAgentPayload,
+} from '../services/agent-status'
 import { buildAgentInstaller } from '../services/agent-installer'
 import { readJsonBodyWithLimit, RequestBodyTooLargeError } from '../request'
 import type { Env } from '../index'
@@ -77,9 +81,7 @@ router.post('/push/:token', async (c) => {
   }
   const now = Math.floor(Date.now() / 1000)
 
-  const unhealthyContainers = body.docker.filter((container) =>
-    container.status !== 'running' || container.health?.includes('unhealthy'),
-  ).length
+  const unhealthyContainers = body.docker.filter(containerNeedsAttention).length
   const buildObservation = (
     subject: typeof monitor,
     checkedAt = now,

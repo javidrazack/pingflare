@@ -1,5 +1,23 @@
 import type { InfrastructureSignal } from './infrastructure-types'
 
+export interface DockerContainerStatus {
+  name: string
+  status: string
+  health?: string
+  oneShot?: boolean
+}
+
+const LEGACY_ONE_SHOT_NAME = /(?:^|[-_.])(init|migrate|migration|setup)(?:[-_.]|$)/i
+
+export function dockerContainerNeedsAttention(container: DockerContainerStatus): boolean {
+  if (container.status === 'running') return container.health?.includes('unhealthy') ?? false
+  return !(
+    container.status === 'exited'
+    && /^exited \(0\)(?:\s|$)/i.test(container.health ?? '')
+    && (container.oneShot === true || LEGACY_ONE_SHOT_NAME.test(container.name))
+  )
+}
+
 function formatMetric(value: number, locale: string): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value)
 }

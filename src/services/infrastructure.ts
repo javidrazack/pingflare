@@ -1,5 +1,5 @@
 import type { Monitor } from '../db/schema'
-import { parseAgentSnapshot } from './agent-status'
+import { containerNeedsAttention, parseAgentSnapshot } from './agent-status'
 
 export type InfrastructureNodeState =
   | 'healthy'
@@ -86,9 +86,7 @@ function strongestDockerSignal(
 ): Extract<InfrastructureSignal, { kind: 'docker' }> | null {
   if (!snapshot) return null
   const affected = snapshot.docker
-    .filter((container) =>
-      container.status !== 'running' || container.health?.includes('unhealthy'),
-    )
+    .filter(containerNeedsAttention)
     .sort((a, b) => {
       const aStopped = a.status === 'running' ? 1 : 0
       const bStopped = b.status === 'running' ? 1 : 0

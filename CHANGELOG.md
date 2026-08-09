@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-08-09
+
+### Fixed
+- Successful Docker Compose init and migration jobs no longer create permanent agent outages; the agent now reads `service_completed_successfully` lifecycle intent while failed exits remain actionable
+
 ## [1.8.0] - 2026-08-09
 
 ### Added
