@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeInfrastructureSignal } from '../../frontend/src/lib/infrastructure'
+import { describeInfrastructureSignal } from './infrastructure'
 
 describe('infrastructure signal descriptions', () => {
   it('describes resource pressure with the observed value and configured threshold', () => {

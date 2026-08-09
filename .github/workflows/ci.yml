@@ -53,15 +53,15 @@ jobs:
 
       - name: 🧪 Test resource signal formatting
         if: always()
-        run: npx vitest run src/test/infrastructureUi.test.ts -t "describes resource pressure"
+        run: npx vitest run frontend/src/lib/infrastructure.test.ts -t "describes resource pressure"
 
       - name: 🧪 Test telemetry age formatting
         if: always()
-        run: npx vitest run src/test/infrastructureUi.test.ts -t "describes stale telemetry"
+        run: npx vitest run frontend/src/lib/infrastructure.test.ts -t "describes stale telemetry"
 
       - name: 🧪 Test Docker signal formatting
         if: always()
-        run: npx vitest run src/test/infrastructureUi.test.ts -t "describes the primary Docker failure"
+        run: npx vitest run frontend/src/lib/infrastructure.test.ts -t "describes the primary Docker failure"
 
       - name: 🧪 Test focused units
         if: always()
