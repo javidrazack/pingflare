@@ -64,6 +64,12 @@ jobs:
           kind=other
           if grep -q "No test files found" "$RUNNER_TEMP/formatter-collection.log"; then
             kind=no-tests
+          elif grep -Eq "(Failed to load|Failed to resolve|Cannot find|ERR_MODULE_NOT_FOUND).*infrastructure-types" "$RUNNER_TEMP/formatter-collection.log"; then
+            kind=types-module
+          elif grep -Eq "(Failed to load|Failed to resolve|Cannot find|ERR_MODULE_NOT_FOUND).*infrastructure\\.(ts|js)" "$RUNNER_TEMP/formatter-collection.log"; then
+            kind=formatter-module
+          elif grep -Eq "(Failed to load|Failed to resolve|Cannot find|ERR_MODULE_NOT_FOUND).*vitest" "$RUNNER_TEMP/formatter-collection.log"; then
+            kind=vitest-module
           elif grep -Eq "Failed to load|Failed to resolve|Cannot find|ERR_MODULE_NOT_FOUND" "$RUNNER_TEMP/formatter-collection.log"; then
             kind=module-resolution
           elif grep -Eq "ReferenceError|not defined" "$RUNNER_TEMP/formatter-collection.log"; then
@@ -77,6 +83,18 @@ jobs:
 
       - name: 🧪 Confirmed - formatter module resolution failed
         if: always() && steps.formatter-diagnosis.outputs.kind == 'module-resolution'
+        run: ':'
+
+      - name: 🧪 Confirmed - formatter type module unresolved
+        if: always() && steps.formatter-diagnosis.outputs.kind == 'types-module'
+        run: ':'
+
+      - name: 🧪 Confirmed - formatter source module unresolved
+        if: always() && steps.formatter-diagnosis.outputs.kind == 'formatter-module'
+        run: ':'
+
+      - name: 🧪 Confirmed - Vitest module unresolved
+        if: always() && steps.formatter-diagnosis.outputs.kind == 'vitest-module'
         run: ':'
 
       - name: 🧪 Confirmed - formatter globals unavailable
