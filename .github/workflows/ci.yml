@@ -51,9 +51,13 @@ jobs:
         if: always()
         run: npx vitest run src/test/agentInstaller.test.ts src/test/legacyMigrationReconcile.test.ts src/test/migrations.test.ts
 
+      - name: 🧪 Test infrastructure signal formatting
+        if: always()
+        run: npx vitest run src/test/infrastructureUi.test.ts
+
       - name: 🧪 Test focused units
         if: always()
-        run: npx vitest run src/test/agentStatus.test.ts src/test/analyticsEngine.test.ts src/test/dns.test.ts src/test/http.test.ts src/test/index.test.ts src/test/infrastructureUi.test.ts src/test/ping.test.ts src/test/responseCache.test.ts
+        run: npx vitest run src/test/agentStatus.test.ts src/test/analyticsEngine.test.ts src/test/dns.test.ts src/test/http.test.ts src/test/index.test.ts src/test/ping.test.ts src/test/responseCache.test.ts
 
       - name: 🛡️ Audit backend dependencies
         run: npm audit --audit-level=high
