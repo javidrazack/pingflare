@@ -51,9 +51,17 @@ jobs:
         if: always()
         run: npx vitest run src/test/agentInstaller.test.ts src/test/legacyMigrationReconcile.test.ts src/test/migrations.test.ts
 
-      - name: 🧪 Test infrastructure signal formatting
+      - name: 🧪 Test resource signal formatting
         if: always()
-        run: npx vitest run src/test/infrastructureUi.test.ts
+        run: npx vitest run src/test/infrastructureUi.test.ts -t "describes resource pressure"
+
+      - name: 🧪 Test telemetry age formatting
+        if: always()
+        run: npx vitest run src/test/infrastructureUi.test.ts -t "describes stale telemetry"
+
+      - name: 🧪 Test Docker signal formatting
+        if: always()
+        run: npx vitest run src/test/infrastructureUi.test.ts -t "describes the primary Docker failure"
 
       - name: 🧪 Test focused units
         if: always()
