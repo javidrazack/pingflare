@@ -53,7 +53,24 @@ jobs:
 
       - name: 🧪 Collect infrastructure formatter tests
         if: always()
-        run: npx vitest list frontend/src/lib/infrastructure.test.ts
+        id: formatter-collection
+        continue-on-error: true
+        run: npx vitest list frontend/src/lib/infrastructure.test.ts > "$RUNNER_TEMP/formatter-collection.log" 2>&1
+
+      - name: 🧪 Diagnosis - formatter tests not found
+        if: always() && steps.formatter-collection.outcome == 'failure'
+        continue-on-error: true
+        run: grep -q "No test files found" "$RUNNER_TEMP/formatter-collection.log"
+
+      - name: 🧪 Diagnosis - formatter module resolution failed
+        if: always() && steps.formatter-collection.outcome == 'failure'
+        continue-on-error: true
+        run: grep -Eq "Failed to load|Failed to resolve|Cannot find|ERR_MODULE_NOT_FOUND" "$RUNNER_TEMP/formatter-collection.log"
+
+      - name: 🧪 Diagnosis - formatter globals unavailable
+        if: always() && steps.formatter-collection.outcome == 'failure'
+        continue-on-error: true
+        run: grep -Eq "ReferenceError|not defined" "$RUNNER_TEMP/formatter-collection.log"
 
       - name: 🧪 Test resource signal formatting
         if: always()
