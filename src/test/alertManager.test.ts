@@ -374,7 +374,6 @@ describe('processAlert reliability', () => {
 
   it('caps a two-row successful drain at thirteen D1 queries', async () => {
     const ctx = await createTestDb()
-    const now = Math.floor(Date.now() / 1000)
     const { drainNotificationDeliveries, processAlert } = await import('../services/alert-manager')
 
     for (let index = 0; index < 2; index += 1) {
@@ -388,6 +387,10 @@ describe('processAlert reliability', () => {
       })
     }
 
+    // Capture the drain time after enqueueing. Slow CI runners can cross a
+    // second boundary while creating both rows, making an earlier timestamp
+    // legitimately defer the newer row.
+    const now = Math.floor(Date.now() / 1000)
     const prepare = vi.spyOn(ctx.d1, 'prepare')
     const result = await drainNotificationDeliveries(ctx.db, undefined, now)
 
