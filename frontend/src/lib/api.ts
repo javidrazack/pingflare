@@ -1,3 +1,6 @@
+import type { InfrastructureSignal } from './infrastructure-types'
+export type { InfrastructureSignal } from './infrastructure-types'
+
 const BASE = '/api'
 
 export class ApiError extends Error {
@@ -303,6 +306,7 @@ export interface InfrastructureNode {
   metrics: { cpu: number; ram: number; disk: number } | null
   thresholds: { cpu: number | null; ram: number | null; disk: number | null }
   pressure: 'normal' | 'warning' | 'critical'
+  strongestSignal: InfrastructureSignal
 }
 
 export interface InfrastructureOverview {

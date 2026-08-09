@@ -8,6 +8,7 @@
   } from '$lib/api'
   import { locale } from '$lib/i18n'
   import { formatRelative } from '$lib/utils'
+  import { describeInfrastructureSignal } from '$lib/infrastructure'
   import HeaderPattern from '$lib/components/HeaderPattern.svelte'
   import Icon from '$lib/components/Icon.svelte'
   import PageLoader from '$lib/components/PageLoader.svelte'
@@ -42,13 +43,6 @@
     if (value > threshold) return 'text-red-500'
     if (value >= threshold * 0.8) return 'text-yellow-600 dark:text-yellow-400'
     return ''
-  }
-
-  function issueDescription(node: InfrastructureNode): string {
-    if (node.state === 'stale') return 'Telemetry has stopped arriving.'
-    if (node.state === 'pending') return 'Waiting for the first complete agent report.'
-    if (node.state === 'critical') return 'A health check or resource threshold needs attention.'
-    return 'Resource use is approaching a configured threshold.'
   }
 
   async function loadOverview() {
@@ -181,11 +175,11 @@
             {:else}
               <div class="divide-y" style="border-color: var(--border-color)">
                 {#each overview.issues as node}
-                  <a href="/monitors/{node.id}" class="flex min-h-14 items-center gap-3 py-3 hover:opacity-80">
+                  <a href="/monitors/{node.id}" class="flex min-h-14 items-center gap-3 py-3 transition-opacity hover:opacity-80" aria-label="{node.name}: {describeInfrastructureSignal(node.strongestSignal, $locale)}">
                     <span class="badge {stateClasses[node.state]}">{stateLabels[node.state]}</span>
                     <div class="min-w-0 flex-1">
                       <p class="truncate text-sm font-semibold">{node.name}</p>
-                      <p class="truncate text-xs" style="color: rgb(var(--text-muted))">{issueDescription(node)}</p>
+                      <p class="mt-0.5 text-xs leading-4" style="color: rgb(var(--text-muted))">{describeInfrastructureSignal(node.strongestSignal, $locale)}</p>
                     </div>
                     <Icon name="arrow-up-right" size={15} cls="shrink-0" />
                   </a>
@@ -220,6 +214,7 @@
                     <tr class="transition-colors hover:bg-[rgb(var(--bg-subtle))]" style="border-bottom: 1px solid var(--border-color)">
                       <td class="px-5 py-3">
                         <a href="/monitors/{node.id}" class="font-semibold hover:text-primary">{node.name}</a>
+                        <p class="mt-0.5 max-w-xs text-xs leading-4" style="color: rgb(var(--text-muted))">{describeInfrastructureSignal(node.strongestSignal, $locale)}</p>
                       </td>
                       <td class="px-3 py-3"><span class="badge {stateClasses[node.state]}">{stateLabels[node.state]}</span></td>
                       <td class="px-3 py-3 text-right font-mono tabular-nums {node.metrics ? metricTone(node.metrics.cpu, node.thresholds.cpu) : ''}">{node.metrics ? `${node.metrics.cpu}%` : '—'}</td>
@@ -239,6 +234,7 @@
                     <span class="truncate text-sm font-semibold">{node.name}</span>
                     <span class="badge {stateClasses[node.state]}">{stateLabels[node.state]}</span>
                   </div>
+                  <p class="mt-1 text-xs leading-4" style="color: rgb(var(--text-muted))">{describeInfrastructureSignal(node.strongestSignal, $locale)}</p>
                   <div class="mt-3 grid grid-cols-3 gap-2 text-xs">
                     <span>CPU <strong class="font-mono">{node.metrics ? `${node.metrics.cpu}%` : '—'}</strong></span>
                     <span>RAM <strong class="font-mono">{node.metrics ? `${node.metrics.ram}%` : '—'}</strong></span>

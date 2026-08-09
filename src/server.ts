@@ -23,6 +23,7 @@ import incidentReportsRoutes from './routes/incidentReports'
 import backupRoutes from './routes/backup'
 import eventsRoutes from './routes/events'
 import agentRoutes from './routes/agent'
+import infrastructureRoutes from './routes/infrastructure'
 
 function createLocalRateLimiter(limit: number): RateLimit {
   const attempts = new Map<string, { count: number; resetAt: number }>()
@@ -97,6 +98,7 @@ async function main() {
   app.route('/api/monitors', monitorRoutes)
   app.route('/api/notifications', notificationRoutes)
   app.route('/api/agent', agentRoutes)
+  app.route('/api/infrastructure', infrastructureRoutes)
   app.route('/api/settings', settingsRoutes)
   app.route('/api/status-pages', statusPagesRoutes)
   app.route('/api/public/status', publicStatusRoutes)
