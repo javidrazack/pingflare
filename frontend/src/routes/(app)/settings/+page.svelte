@@ -12,19 +12,33 @@
   import type { NotificationChannel } from '$lib/api'
 
   let loading = true
+  let error = ''
   let showCreate = false
   let editChannel: NotificationChannel | null = null
   let createType: NotificationChannel['type'] = 'slack'
 
-  onMount(async () => {
-    channels.set(await api.notifications.list())
-    loading = false
-  })
+  async function loadChannels() {
+    loading = true
+    error = ''
+    try {
+      channels.set(await api.notifications.list())
+    } catch {
+      error = $t('notifications.loadFailed')
+    } finally {
+      loading = false
+    }
+  }
+
+  onMount(loadChannels)
 
   async function deleteChannel(id: string, name: string) {
     if (!confirm(get(t)('confirm.deleteChannel', { name }))) return
-    await api.notifications.delete(id)
-    channels.update(list => list.filter(c => c.id !== id))
+    try {
+      await api.notifications.delete(id)
+      channels.update(list => list.filter(c => c.id !== id))
+    } catch {
+      error = $t('notifications.deleteFailed')
+    }
   }
 
   function onSaved(e: CustomEvent<NotificationChannel>) {
@@ -72,6 +86,17 @@
 
   <div class="px-4 py-5 md:px-8 md:py-8 max-w-5xl mx-auto space-y-4">
 
+    {#if error}
+      <div class="alert items-center text-sm" role="alert"
+        style="background: rgb(var(--danger-bg)); color: var(--danger-fg)">
+        <Icon name="exclamation-triangle" size={18} />
+        <span class="min-w-0 flex-1">{error}</span>
+        <button type="button" class="btn-outline shrink-0 text-inherit" on:click={loadChannels}>
+          <Icon name="arrow-path" size={16} /> {$t('notifications.retry')}
+        </button>
+      </div>
+    {/if}
+
     {#if showCreate}
     <div class="card">
       <h2 class="text-sm font-semibold mb-5" style="color: rgb(var(--text))">{$t('notifications.newChannel')}</h2>
@@ -94,7 +119,7 @@
     {#if loading}
       <PageLoader />
 
-    {:else if $channels.length === 0 && !showCreate}
+    {:else if !error && $channels.length === 0 && !showCreate}
       <div class="rounded px-5 py-10 text-center md:px-10 md:py-14"
         style="border: 1px solid var(--border-color); background-color: rgb(var(--card));
 ">

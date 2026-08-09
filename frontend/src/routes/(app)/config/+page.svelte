@@ -121,8 +121,8 @@
   <div class="px-4 py-5 md:px-8 md:py-8 max-w-5xl mx-auto space-y-4">
 
     {#if error}
-      <div class="flex items-center gap-2 px-4 py-3 rounded text-sm"
-        style="background: rgb(239 68 68 / .08); color: #ef4444; border: 1px solid rgb(239 68 68 / .3)">
+      <div class="flex items-center gap-2 px-4 py-3 rounded text-sm" role="alert"
+        style="background: rgb(var(--danger-bg)); color: var(--danger-fg); border: 1px solid color-mix(in srgb, var(--danger-fg) 30%, transparent)">
         <Icon name="exclamation-triangle" size={14} />{error}
       </div>
     {/if}
@@ -133,7 +133,7 @@
         <p class="text-xs mt-0.5" style="color: rgb(var(--text-muted))">{$t('config.languageDesc')}</p>
       </div>
       <div class="flex items-center gap-3">
-        <select class="input w-auto text-sm" value={$locale} on:change={setLocale}>
+        <select class="input w-auto text-sm" aria-label={$t('config.language')} value={$locale} on:change={setLocale}>
           {#each localeOptions as { code, name }}
             <option value={code}>{name}</option>
           {/each}
@@ -149,13 +149,13 @@
 
       <div class="flex flex-col sm:flex-row gap-3">
         <button class="btn-outline text-sm"
-          style="border-color: rgb(59 130 246 / .5); color: #3b82f6;"
+          style="border-color: color-mix(in srgb, var(--color-primary) 45%, var(--border-color)); color: var(--color-primary);"
           disabled={exporting} on:click={exportBackup}>
           {exporting ? $t('config.exporting') : $t('config.exportBackup')}
         </button>
 
         <button class="btn-outline text-sm"
-          style="border-color: rgb(239 68 68 / .4); color: #ef4444;"
+          style="border-color: color-mix(in srgb, var(--danger-fg) 40%, var(--border-color)); color: var(--danger-fg);"
           disabled={importing} on:click={triggerImport}>
           {importing ? $t('config.importing') : $t('config.importBackup')}
         </button>
@@ -164,21 +164,21 @@
       </div>
 
       <div class="flex items-start gap-2 px-3 py-2.5 rounded text-xs"
-        style="background: rgb(234 179 8 / .08); color: #ca8a04; border: 1px solid rgb(234 179 8 / .25)">
+        style="background: rgb(var(--warning-bg)); color: var(--warning-fg); border: 1px solid color-mix(in srgb, var(--warning-fg) 25%, transparent)">
         <Icon name="exclamation-triangle" size={13} cls="mt-px shrink-0" />
         <span>{$t('config.restoreWarning')}</span>
       </div>
 
       {#if restoreSuccess}
-        <div class="flex items-center gap-2 px-3 py-2.5 rounded text-xs"
-          style="background: rgb(34 197 94 / .08); color: #16a34a; border: 1px solid rgb(34 197 94 / .25)">
+        <div class="flex items-center gap-2 px-3 py-2.5 rounded text-xs" role="status" aria-live="polite"
+          style="background: rgb(var(--success-bg)); color: var(--success-fg); border: 1px solid color-mix(in srgb, var(--success-fg) 25%, transparent)">
           <Icon name="check-circle" size={13} /> {$t('config.restoreSuccess')}
         </div>
       {/if}
 
       {#if restoreError}
-        <div class="flex items-center gap-2 px-3 py-2.5 rounded text-xs"
-          style="background: rgb(239 68 68 / .08); color: #ef4444; border: 1px solid rgb(239 68 68 / .3)">
+        <div class="flex items-center gap-2 px-3 py-2.5 rounded text-xs" role="alert"
+          style="background: rgb(var(--danger-bg)); color: var(--danger-fg); border: 1px solid color-mix(in srgb, var(--danger-fg) 30%, transparent)">
           <Icon name="exclamation-triangle" size={13} /> {restoreError}
         </div>
       {/if}

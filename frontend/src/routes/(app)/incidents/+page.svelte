@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import { api } from '$lib/api'
   import { t } from '$lib/i18n'
   import { get } from 'svelte/store'
@@ -37,6 +37,7 @@
   let updating = false
   let updateError = ''
   let activeView: 'detected' | 'reported' = 'detected'
+  const incidentViews: Array<'detected' | 'reported'> = ['detected', 'reported']
 
   onMount(async () => {
     try {
@@ -110,11 +111,11 @@
   }
 
   function reportDetected(event: DetectedIncident) {
-    createTitle = `${event.monitorName} service disruption`
+    createTitle = $t('incidents.detectedTitle', { name: event.monitorName })
     createStatus = event.resolvedAt ? 'resolved' : 'investigating'
     createMessage = event.resolvedAt
-      ? 'Service has recovered. We are reviewing the event.'
-      : 'We are investigating an interruption affecting this service.'
+      ? $t('incidents.recoveredMessage')
+      : $t('incidents.investigatingMessage')
     createMonitorIds = [event.monitorId]
     createEventIds = [event.id]
     createVisibility = 'draft'
@@ -126,10 +127,10 @@
 
   function statusCls(s: IncidentStatus): string {
     return {
-      investigating: 'text-red-400 bg-red-500/10 border-red-500/20',
-      identified:    'text-orange-400 bg-orange-500/10 border-orange-500/20',
-      monitoring:    'text-yellow-400 bg-yellow-500/10 border-yellow-500/20',
-      resolved:      'text-green-400 bg-green-500/10 border-green-500/20',
+      investigating: 'badge-down',
+      identified:    'badge-warning',
+      monitoring:    'badge-warning',
+      resolved:      'badge-up',
     }[s] ?? ''
   }
 
@@ -137,6 +138,28 @@
 
   function tIncidentStatus(s: string): string {
     return $t(('incidentStatus.' + s) as Parameters<typeof $t>[0])
+  }
+
+  async function selectIncidentView(view: 'detected' | 'reported', focus = false) {
+    activeView = view
+    if (focus) {
+      await tick()
+      document.getElementById(`incident-tab-${view}`)?.focus()
+    }
+  }
+
+  function handleTabKeydown(event: KeyboardEvent, view: 'detected' | 'reported') {
+    const currentIndex = incidentViews.indexOf(view)
+    let nextIndex = currentIndex
+
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % incidentViews.length
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + incidentViews.length) % incidentViews.length
+    else if (event.key === 'Home') nextIndex = 0
+    else if (event.key === 'End') nextIndex = incidentViews.length - 1
+    else return
+
+    event.preventDefault()
+    void selectIncidentView(incidentViews[nextIndex], true)
   }
 
   $: showAnyForm = showCreate || updatingIncident !== null
@@ -165,24 +188,28 @@
 
   <div class="px-4 py-5 md:px-8 md:py-8 max-w-5xl mx-auto space-y-4">
 
-    <div class="inline-flex rounded-lg border border-[rgb(var(--border))] bg-[rgb(var(--bg-subtle))] p-1" role="tablist" aria-label="Incident views">
-      <button type="button" role="tab" aria-selected={activeView === 'detected'}
-        class="rounded-md px-4 py-2 text-sm font-medium {activeView === 'detected' ? 'bg-[rgb(var(--card))] shadow-sm' : ''}"
-        on:click={() => activeView = 'detected'}>
-        Detected events
+    <div class="inline-flex rounded-lg border bg-[rgb(var(--bg-subtle))] p-1" style="border-color: var(--border-color)" role="tablist" aria-label={$t('incidents.views')}>
+      <button id="incident-tab-detected" type="button" role="tab" aria-selected={activeView === 'detected'}
+        aria-controls="incident-panel-detected" tabindex={activeView === 'detected' ? 0 : -1}
+        class="min-h-11 rounded-md px-4 py-2 text-sm font-medium {activeView === 'detected' ? 'bg-[rgb(var(--card))] shadow-sm' : ''}"
+        on:click={() => selectIncidentView('detected')}
+        on:keydown={(event) => handleTabKeydown(event, 'detected')}>
+        {$t('incidents.detectedEvents')}
         {#if detectedIncidents.length}<span class="ml-1 badge badge-warning">{detectedIncidents.length}</span>{/if}
       </button>
-      <button type="button" role="tab" aria-selected={activeView === 'reported'}
-        class="rounded-md px-4 py-2 text-sm font-medium {activeView === 'reported' ? 'bg-[rgb(var(--card))] shadow-sm' : ''}"
-        on:click={() => activeView = 'reported'}>
-        Status reports
+      <button id="incident-tab-reported" type="button" role="tab" aria-selected={activeView === 'reported'}
+        aria-controls="incident-panel-reported" tabindex={activeView === 'reported' ? 0 : -1}
+        class="min-h-11 rounded-md px-4 py-2 text-sm font-medium {activeView === 'reported' ? 'bg-[rgb(var(--card))] shadow-sm' : ''}"
+        on:click={() => selectIncidentView('reported')}
+        on:keydown={(event) => handleTabKeydown(event, 'reported')}>
+        {$t('incidents.statusReports')}
         {#if incidents.length}<span class="ml-1 badge">{incidents.length}</span>{/if}
       </button>
     </div>
 
     {#if error}
-      <div class="flex items-center gap-2 px-4 py-3 rounded text-sm"
-        style="background: rgb(239 68 68 / .08); color: #ef4444; border: 1px solid rgb(239 68 68 / .3)">
+      <div class="flex items-center gap-2 px-4 py-3 rounded text-sm" role="alert"
+        style="background: rgb(var(--danger-bg)); color: var(--danger-fg); border: 1px solid color-mix(in srgb, var(--danger-fg) 30%, transparent)">
         <Icon name="exclamation-triangle" size={14} />{error}
       </div>
     {/if}
@@ -202,20 +229,20 @@
           </select>
         </div>
         <div class="col-span-2 sm:col-span-1">
-          <label class="label" for="inc-impact">Impact</label>
+          <label class="label" for="inc-impact">{$t('incidents.impact')}</label>
           <select id="inc-impact" class="input" bind:value={createImpact}>
-            <option value="minor">Minor</option>
-            <option value="major">Major</option>
-            <option value="critical">Critical</option>
+            <option value="minor">{$t('incidents.impactMinor')}</option>
+            <option value="major">{$t('incidents.impactMajor')}</option>
+            <option value="critical">{$t('incidents.impactCritical')}</option>
           </select>
         </div>
         <div class="col-span-2">
-          <label class="label" for="inc-visibility">Publishing</label>
+          <label class="label" for="inc-visibility">{$t('incidents.publishing')}</label>
           <select id="inc-visibility" class="input" bind:value={createVisibility}>
-            <option value="draft">Save as draft</option>
-            <option value="published">Publish to status pages</option>
+            <option value="draft">{$t('incidents.saveDraft')}</option>
+            <option value="published">{$t('incidents.publish')}</option>
           </select>
-          <p class="mt-1 text-xs" style="color: rgb(var(--text-muted))">Drafts are visible only to your team until published.</p>
+          <p class="mt-1 text-xs" style="color: rgb(var(--text-muted))">{$t('incidents.draftHint')}</p>
         </div>
         <div class="col-span-2">
           <label class="label" for="inc-msg">{$t('incidents.labelMessage')}</label>
@@ -229,7 +256,7 @@
           {:else}
             <div class="grid grid-cols-2 gap-1">
               {#each allMonitors as m}
-                <label class="flex items-center gap-2 cursor-pointer text-sm p-2 rounded hover:bg-[rgb(var(--bg-subtle))]">
+                <label class="flex min-h-11 items-center gap-2 cursor-pointer text-sm p-2 rounded hover:bg-[rgb(var(--bg-subtle))]">
                   <input type="checkbox"
                     checked={createMonitorIds.includes(m.id)}
                     on:change={() => toggleMonitor(m.id)}
@@ -241,7 +268,7 @@
           {/if}
         </div>
       </div>
-      {#if createError}<p class="text-sm text-red-400">{createError}</p>{/if}
+      {#if createError}<p class="text-sm" style="color: var(--danger-fg)" role="alert">{createError}</p>{/if}
       <div class="flex gap-2">
         <button class="btn-primary" on:click={create} disabled={creating}>
           {creating ? $t('incidents.creating') : $t('incidents.createIncident')}
@@ -270,7 +297,7 @@
             placeholder={$t('incidents.placeholderUpdate')}></textarea>
         </div>
       </div>
-      {#if updateError}<p class="text-sm text-red-400">{updateError}</p>{/if}
+      {#if updateError}<p class="text-sm" style="color: var(--danger-fg)" role="alert">{updateError}</p>{/if}
       <div class="flex gap-2">
         <button class="btn-primary" on:click={addUpdate} disabled={updating}>
           {updating ? $t('incidents.posting') : $t('incidents.postUpdate')}
@@ -280,14 +307,15 @@
     </div>
     {/if}
 
+    <div role="tabpanel" id="incident-panel-{activeView}" aria-labelledby="incident-tab-{activeView}" tabindex="0">
     {#if activeView === 'detected' && !loading}
       {#if detectedIncidents.length === 0}
         <div class="card py-14 text-center">
           <div class="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[var(--color-success-soft)] text-[var(--color-success)]">
             <Icon name="check" size={20} />
           </div>
-          <p class="font-semibold">No unreported events</p>
-          <p class="mt-1 text-sm" style="color: rgb(var(--text-muted))">Every detected outage is already linked to a status report.</p>
+          <p class="font-semibold">{$t('incidents.noUnreported')}</p>
+          <p class="mt-1 text-sm" style="color: rgb(var(--text-muted))">{$t('incidents.noUnreportedDesc')}</p>
         </div>
       {:else}
         <div class="space-y-3">
@@ -296,15 +324,15 @@
               <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-center gap-2">
                   <h2 class="font-semibold">{event.monitorName}</h2>
-                  <span class="badge {event.resolvedAt ? 'badge-success' : 'badge-danger'}">{event.resolvedAt ? 'Recovered' : 'Ongoing'}</span>
+                  <span class="badge {event.resolvedAt ? 'badge-up' : 'badge-down'}">{event.resolvedAt ? $t('incidents.recovered') : $t('incidents.ongoing')}</span>
                 </div>
                 <p class="mt-1 text-sm" style="color: rgb(var(--text-muted))">
-                  Detected {formatDate(event.startedAt)}
-                  {#if event.durationSeconds} · {Math.max(1, Math.round(event.durationSeconds / 60))} min{/if}
+                  {$t('incidents.detected')} {formatDate(event.startedAt)}
+                  {#if event.durationSeconds} · {$t('incidents.durationMinutes', { minutes: Math.max(1, Math.round(event.durationSeconds / 60)) })}{/if}
                 </p>
               </div>
               <button class="btn-primary shrink-0" on:click={() => reportDetected(event)}>
-                Create report
+                {$t('incidents.createReport')}
               </button>
             </article>
           {/each}
@@ -335,17 +363,17 @@
       <div class="space-y-3">
         {#each incidents as inc (inc.id)}
           <div class="rounded p-4 space-y-3"
-            style="border: 1px solid {!inc.resolvedAt ? 'rgb(239 68 68 / .35)' : 'var(--border-color)'}; background-color: rgb(var(--card))">
+            style="border: 1px solid {!inc.resolvedAt ? 'color-mix(in srgb, var(--danger-fg) 35%, transparent)' : 'var(--border-color)'}; background-color: rgb(var(--card))">
 
             <div class="flex items-start gap-3">
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
                   <span class="font-semibold text-sm" style="color: rgb(var(--text))">{inc.title}</span>
                   <span class="text-xs px-2 py-0.5 rounded border font-medium {statusCls(inc.status)}">{tIncidentStatus(inc.status)}</span>
-                  <span class="badge">{inc.impact}</span>
-                  {#if inc.visibility === 'draft'}<span class="badge badge-warning">Draft</span>{/if}
+                  <span class="badge">{$t(('incidents.impact' + inc.impact.charAt(0).toUpperCase() + inc.impact.slice(1)) as Parameters<typeof $t>[0])}</span>
+                  {#if inc.visibility === 'draft'}<span class="badge badge-warning">{$t('incidents.draft')}</span>{/if}
                   {#if !inc.resolvedAt}
-                    <span class="text-xs font-medium text-red-400">{$t('incidents.active')}</span>
+                    <span class="text-xs font-medium" style="color: var(--danger-fg)">{$t('incidents.active')}</span>
                   {/if}
                 </div>
                 <p class="text-xs mt-0.5" style="color: rgb(var(--text-muted))">{$t('incidents.started')} {formatDate(inc.startedAt)}</p>
@@ -361,7 +389,8 @@
                     {$t('incidents.addUpdate')}
                   </button>
                 {/if}
-                <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-400"
+                <button class="inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium"
+                  style="color: var(--danger-fg)" aria-label={$t('incidents.deleteNamed', { name: inc.title })}
                   on:click={() => remove(inc)}>
                   <Icon name="trash" size={14} />
                 </button>
@@ -369,7 +398,7 @@
             </div>
 
             {#if inc.updates && inc.updates.length > 0}
-              <div class="space-y-2 pl-3 ml-1" style="border-left: 2px solid rgb(var(--border))">
+              <div class="space-y-2 pl-3 ml-1" style="border-left: 2px solid var(--border-color)">
                 {#each inc.updates as u}
                   <div>
                     <div class="flex items-center gap-2">
@@ -385,6 +414,7 @@
         {/each}
       </div>
     {/if}
+    </div>
 
   </div>
 </div>

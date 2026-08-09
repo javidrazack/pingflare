@@ -273,7 +273,7 @@
 
 {:else if !monitor}
   <div class="p-6 space-y-4">
-    {#if error}<p class="text-sm text-red-400">{error}</p>{/if}
+    {#if error}<p class="text-sm" style="color: var(--danger-fg)" role="alert">{error}</p>{/if}
     <p style="color: rgb(var(--text-muted))">{$t('monitor.notFound')}</p>
     <a href="/monitors" class="btn-primary inline-flex">{$t('monitor.back')}</a>
   </div>
@@ -294,7 +294,7 @@
               <StatusBadge status={monitor.lastStatus} />
               {#if monitor.sslCheckEnabled && monitor.sslStatus !== 'unknown'}
                 <span class="text-xs px-2 py-0.5 rounded font-medium {monitor.sslStatus === 'ok' ? 'text-green-600' : 'text-red-400'}"
-                  style="background: {monitor.sslStatus === 'ok' ? 'rgb(34 197 94 / .1)' : 'rgb(239 68 68 / .1)'}">
+                  style="background: {monitor.sslStatus === 'ok' ? 'rgb(var(--success-bg))' : 'rgb(var(--danger-bg))'}">
                   {$t('monitor.ssl')}: {monitor.sslStatus === 'ok' ? $t('monitor.sslOk') : $t('monitor.sslError')}
                 </span>
               {/if}
@@ -361,8 +361,8 @@
   <div class="px-4 py-5 md:px-8 md:py-8 max-w-7xl mx-auto space-y-4">
 
     {#if error}
-      <div class="flex items-center gap-2 px-4 py-3 rounded text-sm"
-        style="background: rgb(239 68 68 / .08); color: #ef4444; border: 1px solid rgb(239 68 68 / .3)">
+      <div class="flex items-center gap-2 px-4 py-3 rounded text-sm" role="alert"
+        style="background: rgb(var(--danger-bg)); color: var(--danger-fg); border: 1px solid color-mix(in srgb, var(--danger-fg) 30%, transparent)">
         <Icon name="exclamation-triangle" size={14} />
         {error}
       </div>
@@ -390,7 +390,7 @@
           {avgResponseTime != null ? `${avgResponseTime}ms` : '-'}
         </div>
       </div>
-      <div class="stat-card" style="{openIncidents > 0 ? 'border-color: rgb(239 68 68 / .45)' : ''}">
+      <div class="stat-card" style="{openIncidents > 0 ? 'border-color: color-mix(in srgb, var(--danger-fg) 45%, var(--border-color))' : ''}">
         <div class="text-xs mb-2" style="color: rgb(var(--text-muted))">{$t('monitor.openIncidents')}</div>
         <div class="text-2xl font-bold tracking-tight tabular-nums {openIncidents > 0 ? 'text-red-400' : ''}"
           style="{openIncidents === 0 ? 'color: rgb(var(--text))' : ''}">{openIncidents}</div>
@@ -547,7 +547,7 @@
     {/if}
 
     {#if monitor.type === 'agent' && hbToken}
-    <div class="card space-y-3 border-l-4" class:hidden={activeTab !== 'configuration'} style="border-left-color: var(--color-primary)">
+    <div class="card space-y-3" class:hidden={activeTab !== 'configuration'} style="border-color: color-mix(in srgb, var(--color-primary) 30%, var(--border-color))">
       <div>
         <h2 class="text-sm font-semibold" style="color: rgb(var(--text))">Agent Installation</h2>
         <p class="text-xs mt-0.5" style="color: rgb(var(--text-muted))">
@@ -641,9 +641,12 @@
                 <td class="py-2.5 pr-3 hidden sm:table-cell" style="color: rgb(var(--text-muted))">
                   <span class="inline-flex items-center gap-1.5">
                     {#if log.countryCode}
-                      <span class="fi fi-{log.countryCode.toLowerCase()} shrink-0"
+                      <span
+                        class="inline-flex h-4 min-w-6 shrink-0 items-center justify-center rounded px-1 font-mono text-xs font-semibold tracking-wide"
                         title="{log.countryCode} · {log.originIp ?? ''} · DC {log.colo}"
-                        style="width:16px;height:12px;border-radius:2px"></span>
+                        style="background: rgb(var(--bg-muted)); color: rgb(var(--text-muted))">
+                        {log.countryCode.toUpperCase()}
+                      </span>
                     {/if}
                     <span class="font-mono tabular-nums">{log.responseTimeMs != null ? `${log.responseTimeMs}ms` : '—'}</span>
                   </span>
@@ -674,8 +677,8 @@
       {/if}
     </div>
 
-    <div class="rounded-lg overflow-hidden" class:hidden={activeTab !== 'configuration'} style="border: 1px solid rgb(239 68 68 / .35)">
-      <div class="px-4 py-3" style="background: rgb(239 68 68 / .07); border-bottom: 1px solid rgb(239 68 68 / .25)">
+    <div class="rounded-lg overflow-hidden" class:hidden={activeTab !== 'configuration'} style="border: 1px solid color-mix(in srgb, var(--danger-fg) 35%, var(--border-color))">
+      <div class="px-4 py-3" style="background: rgb(var(--danger-bg)); border-bottom: 1px solid color-mix(in srgb, var(--danger-fg) 25%, transparent)">
         <h2 class="text-sm font-semibold text-red-400">{$t('monitor.dangerZone')}</h2>
       </div>
       <div class="px-4 py-4 space-y-3">

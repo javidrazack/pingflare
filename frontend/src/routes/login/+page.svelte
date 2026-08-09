@@ -35,8 +35,7 @@
 
 <svelte:head><title>{$t('login.signIn')} - Pingflare</title></svelte:head>
 
-<div class="min-h-screen flex items-center justify-center relative overflow-hidden"
-  style="background-color: rgb(var(--bg))">
+<div class="login-shell min-h-screen flex items-center justify-center relative overflow-hidden">
 
   <HeaderPattern />
 
@@ -46,10 +45,18 @@
   <div class="relative w-full max-w-sm px-4">
 
     <div class="mb-8 text-center">
-      <img src="/logo.png" alt="Pingflare" class="h-16 mx-auto mb-3" />
+      <img
+        src="/logo-64.webp"
+        srcset="/logo-64.webp 1x, /logo-128.webp 2x"
+        alt="Pingflare"
+        width="64"
+        height="64"
+        class="login-logo h-16 mx-auto mb-3" />
+      <h1 class="text-2xl font-bold tracking-tight" style="color: rgb(var(--text))">Pingflare</h1>
+      <p class="mt-1 text-sm font-medium" style="color: var(--color-primary)">{$t('login.signIn')}</p>
     </div>
 
-    <div class="rounded-lg p-6 space-y-4"
+    <div class="login-panel rounded-xl p-6 space-y-4"
       style="background-color: rgb(var(--card)); border: 1px solid var(--border-color)">
 
       <form on:submit|preventDefault={login} class="space-y-4">
@@ -65,8 +72,8 @@
         </div>
 
         {#if error}
-          <div class="flex items-center gap-2 text-sm px-3 py-2"
-            style="background: rgb(239 68 68 / .08); color: #ef4444">
+          <div class="state-reveal flex items-center gap-2 rounded-lg border px-3 py-2 text-sm" role="alert"
+            style="background: rgb(var(--danger-bg)); color: var(--danger-fg); border-color: color-mix(in srgb, var(--danger-fg) 24%, transparent)">
             <Icon name="exclamation-triangle" size={14} />
             {error}
           </div>

@@ -127,7 +127,7 @@
         <input class="input" type="search" bind:value={filter}
           on:input={() => scheduleLoad()} placeholder={$t('monitors.searchPlaceholder')} />
       </label>
-      <select class="input" bind:value={typeFilter} on:change={() => scheduleLoad()}>
+      <select class="input" aria-label={$t('monitors.filterType')} bind:value={typeFilter} on:change={() => scheduleLoad()}>
         <option value="all">{$t('monitors.allTypes')}</option>
         <option value="http">{$t('monitors.http')}</option>
         <option value="heartbeat">{$t('monitors.heartbeat')}</option>
@@ -135,13 +135,13 @@
         <option value="dns">{$t('monitors.dns')}</option>
         <option value="ping">{$t('monitors.ping')}</option>
       </select>
-      <select class="input" bind:value={statusFilter} on:change={() => scheduleLoad()}>
+      <select class="input" aria-label={$t('monitors.filterStatus')} bind:value={statusFilter} on:change={() => scheduleLoad()}>
         <option value="all">{$t('monitors.allStatuses')}</option>
         <option value="up">{$t('monitors.up')}</option>
         <option value="down">{$t('monitors.down')}</option>
         <option value="pending">{$t('monitors.pending')}</option>
       </select>
-      <select class="input" bind:value={activeFilter} on:change={() => scheduleLoad()}>
+      <select class="input" aria-label={$t('monitors.filterActivity')} bind:value={activeFilter} on:change={() => scheduleLoad()}>
         <option value="all">{$t('monitors.allActivity')}</option>
         <option value="true">{$t('common.active')}</option>
         <option value="false">{$t('common.disabled')}</option>

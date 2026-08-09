@@ -17,7 +17,7 @@
   <div class="relative overflow-hidden" style="border-bottom: 1px solid var(--border-color)">
     <HeaderPattern />
     <div class="relative px-4 py-6 md:px-8 md:py-8 max-w-5xl mx-auto">
-      <a href="/monitors" class="inline-flex items-center gap-1 text-xs mb-4 transition-colors hover:text-[var(--color-primary)]"
+      <a href="/monitors" class="mb-4 inline-flex min-h-11 items-center gap-1 text-xs transition-colors hover:text-[var(--color-primary)]"
         style="color: rgb(var(--text-muted))">{$t('newMonitor.back')}</a>
       <h1 class="text-3xl font-semibold tracking-tight" style="color: rgb(var(--text))">{$t('newMonitor.heading')}</h1>
       <p class="mt-1 text-sm" style="color: rgb(var(--text-muted))">{$t('newMonitor.subtitle')}</p>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { theme, monitors } from '$lib/stores'
@@ -29,18 +29,16 @@
     return false
   }
 
-  let countdown = 10
-  let countTicker: ReturnType<typeof setInterval>
   let updateAvailable = false
   let latestVersion = ''
   let menuOpen = false
   let sidebarCollapsed = false
+  let menuButton: HTMLButtonElement
+  let menuPanel: HTMLElement
+  let menuCloseButton: HTMLButtonElement
 
   onMount(async () => {
     if (!localStorage.getItem('token')) goto('/login')
-    countTicker = setInterval(() => {
-      countdown = countdown <= 1 ? 10 : countdown - 1
-    }, 1000)
 
     const cacheKey = 'pf_latest_version'
     const cached = sessionStorage.getItem(cacheKey)
@@ -65,8 +63,6 @@
       }
     }
   })
-  onDestroy(() => clearInterval(countTicker))
-
   function logout() {
     localStorage.removeItem('token')
     goto('/login')
@@ -87,8 +83,41 @@
     return pathname.startsWith(href)
   }
 
+  async function openMenu() {
+    menuOpen = true
+    await tick()
+    menuCloseButton?.focus()
+  }
+
+  async function closeMenu(restoreFocus = true) {
+    menuOpen = false
+    if (restoreFocus) {
+      await tick()
+      menuButton?.focus()
+    }
+  }
+
   function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') menuOpen = false
+    if (event.key === 'Escape' && menuOpen) {
+      event.preventDefault()
+      void closeMenu()
+      return
+    }
+    if (event.key !== 'Tab' || !menuOpen || !menuPanel) return
+
+    const focusable = Array.from(menuPanel.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ))
+    if (focusable.length === 0) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
   }
 
   $: if ($page.url.pathname) menuOpen = false
@@ -119,20 +148,23 @@
 <svelte:window on:keydown={handleKeydown} />
 
 <a href="#main-content"
-  class="bg-primary-solid fixed left-3 top-3 z-[100] -translate-y-20 rounded-lg px-4 py-2 text-sm font-semibold focus:translate-y-0">
-  Skip to content
+  class="bg-primary-solid fixed left-3 top-3 z-[100] inline-flex min-h-11 -translate-y-20 items-center rounded-lg px-4 py-2 text-sm font-semibold focus:translate-y-0">
+  {$t('layout.skipToContent')}
 </a>
 
 <div class="min-h-dvh lg:flex" style="background-color: rgb(var(--bg))">
   <aside
-    class="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:flex-col"
+    inert={menuOpen}
+    class="app-sidebar hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:flex-col"
     class:w-20={sidebarCollapsed}
     class:w-64={!sidebarCollapsed}
     style="background-color: rgb(var(--bg-subtle)); border-right: 1px solid var(--border-color)"
-    aria-label="Primary navigation">
+    aria-label={$t('layout.primaryNavigation')}>
     <div class="flex h-16 items-center gap-3 px-4" style="border-bottom: 1px solid var(--border-color)">
-      <a href="/" aria-label="Pingflare home" class="flex min-w-0 items-center gap-3">
-        <img src="/logo.png" alt="" class="h-8 w-8 shrink-0 object-contain" />
+      <a href="/" aria-label={$t('layout.home')} class="brand-lockup flex min-h-11 min-w-0 items-center gap-3">
+        <span class="brand-beacon">
+          <img src="/logo-64.webp" alt="" width="32" height="32" class="h-8 w-8 shrink-0 object-contain" />
+        </span>
         {#if !sidebarCollapsed}
           <span class="truncate text-base font-semibold" style="color: rgb(var(--text))">Pingflare</span>
         {/if}
@@ -148,7 +180,7 @@
           class:justify-center={sidebarCollapsed}
           aria-current={active ? 'page' : undefined}
           title={sidebarCollapsed ? item.label : undefined}>
-          <Icon name={item.icon} size={19} />
+          <span class="nav-icon-well"><Icon name={item.icon} size={19} /></span>
           {#if !sidebarCollapsed}<span>{item.label}</span>{/if}
         </a>
       {/each}
@@ -165,26 +197,28 @@
           <Icon name="arrow-right-on-rect" size={19} />
         </button>
         <button type="button" class="btn-ghost icon-button ml-auto" class:ml-auto={!sidebarCollapsed}
-          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={sidebarCollapsed ? $t('layout.expandSidebar') : $t('layout.collapseSidebar')}
           aria-expanded={!sidebarCollapsed}
           on:click={() => sidebarCollapsed = !sidebarCollapsed}>
           <Icon name={sidebarCollapsed ? 'arrows-pointing-out' : 'arrows-pointing-in'} size={18} />
         </button>
       </div>
       {#if !sidebarCollapsed}
-        <div class="flex items-center justify-between px-2 pt-2 text-xs" style="color: rgb(var(--text-muted))">
+        <div class="px-2 pt-2 text-xs" style="color: rgb(var(--text-muted))">
           <span>v{APP_VERSION}</span>
-          <span class="tabular-nums">Refresh {countdown}s</span>
         </div>
       {/if}
     </div>
   </aside>
 
-  <div class="flex min-h-dvh min-w-0 flex-1 flex-col transition-[margin] duration-200 {sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}">
+  <div class="app-canvas flex min-h-dvh min-w-0 flex-1 flex-col {sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}">
     <header class="sticky top-0 z-20 flex h-16 items-center gap-3 px-4 lg:hidden"
+      inert={menuOpen}
       style="background-color: rgb(var(--bg-subtle)); border-bottom: 1px solid var(--border-color)">
-      <a href="/" aria-label="Pingflare home" class="flex min-w-0 items-center gap-2">
-        <img src="/logo.png" alt="" class="h-8 w-8 object-contain" />
+      <a href="/" aria-label={$t('layout.home')} class="brand-lockup flex min-h-11 min-w-0 items-center gap-2">
+        <span class="brand-beacon">
+          <img src="/logo-64.webp" alt="" width="32" height="32" class="h-8 w-8 object-contain" />
+        </span>
         <span class="truncate text-sm font-semibold" style="color: rgb(var(--text))">Pingflare</span>
       </a>
       <div class="ml-auto flex items-center gap-1">
@@ -193,25 +227,25 @@
           on:click={() => theme.toggle()}>
           <Icon name={$theme === 'dark' ? 'sun' : 'moon'} size={19} />
         </button>
-        <button type="button" class="btn-outline icon-button" aria-label="Open navigation"
+        <button bind:this={menuButton} type="button" class="btn-outline icon-button" aria-label={$t('layout.openNavigation')}
           aria-expanded={menuOpen} aria-controls="mobile-navigation"
-          on:click={() => menuOpen = true}>
+          on:click={openMenu}>
           <Icon name="bars-3" size={20} />
         </button>
       </div>
     </header>
 
     {#if menuOpen}
-      <button class="fixed inset-0 z-40 bg-black/50 lg:hidden" aria-label="Close navigation"
-        on:click={() => menuOpen = false}></button>
-      <aside id="mobile-navigation"
+      <button type="button" tabindex="-1" class="fixed inset-0 z-40 bg-black/50 lg:hidden" aria-label={$t('layout.closeNavigation')}
+        on:click={() => void closeMenu()}></button>
+      <div bind:this={menuPanel} id="mobile-navigation" role="dialog" aria-modal="true"
         class="fixed inset-y-0 right-0 z-50 flex w-[min(20rem,88vw)] flex-col p-4 shadow-2xl lg:hidden"
         style="background-color: rgb(var(--card))"
-        aria-label="Mobile navigation">
+        aria-label={$t('layout.mobileNavigation')}>
         <div class="mb-4 flex items-center justify-between">
-          <span class="text-sm font-semibold" style="color: rgb(var(--text))">Navigation</span>
-          <button type="button" class="btn-ghost icon-button" aria-label="Close navigation"
-            on:click={() => menuOpen = false}>
+          <span class="text-sm font-semibold" style="color: rgb(var(--text))">{$t('layout.navigation')}</span>
+          <button bind:this={menuCloseButton} type="button" class="btn-ghost icon-button" aria-label={$t('layout.closeNavigation')}
+            on:click={() => void closeMenu()}>
             <Icon name="x-mark" size={20} />
           </button>
         </div>
@@ -220,7 +254,7 @@
             {@const active = isActive(item.href, $page.url.pathname)}
             <a href={item.href} class="{active ? 'nav-link-active' : 'nav-link'} w-full"
               aria-current={active ? 'page' : undefined}>
-              <Icon name={item.icon} size={19} />
+              <span class="nav-icon-well"><Icon name={item.icon} size={19} /></span>
               <span>{item.label}</span>
             </a>
           {/each}
@@ -228,18 +262,18 @@
         <button type="button" class="btn-outline w-full" on:click={logout}>
           <Icon name="arrow-right-on-rect" size={18} /> {$t('layout.signOut')}
         </button>
-      </aside>
+      </div>
     {/if}
 
-    <main id="main-content" tabindex="-1" class="min-w-0 flex-1 outline-none">
+    <main id="main-content" tabindex="-1" inert={menuOpen} class="min-w-0 flex-1 outline-none">
       <slot />
     </main>
 
-    <footer class="px-4 py-3 text-xs" style="border-top: 1px solid var(--border-color); color: rgb(var(--text-muted))">
+    <footer inert={menuOpen} class="px-4 py-3 text-xs" style="border-top: 1px solid var(--border-color); color: rgb(var(--text-muted))">
       <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2">
         {#if updateAvailable}
           <a href="https://github.com/{GITHUB_REPO}/releases/latest" target="_blank" rel="noopener noreferrer"
-            class="flex items-center gap-1.5 rounded-full px-2 py-1 font-medium"
+            class="flex min-h-11 items-center gap-1.5 rounded-full px-2 py-1 font-medium"
             style="color: var(--color-primary); background: var(--color-primary-soft)">
             <Icon name="exclamation-triangle" size={13} />
             {$t('footer.updateAvailable')} v{latestVersion}

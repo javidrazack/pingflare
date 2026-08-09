@@ -1,0 +1,298 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-08T19:56:24Z",
+  "title": "Design System: Pingflare",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Signal Amber",
+        "canonical": "#b45309",
+        "tonalRamp": ["oklch(22% 0.06 60)", "oklch(32% 0.09 60)", "oklch(42% 0.12 60)", "oklch(52% 0.14 60)", "oklch(62% 0.13 65)", "oklch(72% 0.11 72)", "oklch(84% 0.07 80)", "oklch(95% 0.03 88)"]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Signal Amber Hover",
+        "canonical": "#92400e",
+        "tonalRamp": ["oklch(18% 0.05 55)", "oklch(28% 0.08 55)", "oklch(38% 0.11 55)", "oklch(48% 0.13 55)", "oklch(58% 0.12 60)", "oklch(70% 0.10 68)", "oklch(83% 0.06 78)", "oklch(95% 0.02 88)"]
+      },
+      "primary-active": {
+        "role": "primary",
+        "displayName": "Signal Amber Active",
+        "canonical": "#78350f",
+        "tonalRamp": ["oklch(16% 0.04 52)", "oklch(25% 0.07 52)", "oklch(34% 0.09 52)", "oklch(44% 0.11 52)", "oklch(55% 0.11 58)", "oklch(68% 0.09 66)", "oklch(82% 0.05 76)", "oklch(95% 0.02 86)"]
+      },
+      "primary-soft": {
+        "role": "primary",
+        "displayName": "Signal Amber Soft",
+        "canonical": "#fef3c7",
+        "tonalRamp": ["oklch(20% 0.03 86)", "oklch(31% 0.04 86)", "oklch(43% 0.05 86)", "oklch(55% 0.06 86)", "oklch(67% 0.06 86)", "oklch(78% 0.05 86)", "oklch(88% 0.04 86)", "oklch(96% 0.03 86)"]
+      },
+      "primary-dark-mode": {
+        "role": "primary",
+        "displayName": "Dark Signal Amber",
+        "canonical": "#d97706",
+        "tonalRamp": ["oklch(23% 0.06 65)", "oklch(33% 0.09 65)", "oklch(43% 0.12 65)", "oklch(54% 0.15 65)", "oklch(64% 0.15 69)", "oklch(74% 0.12 74)", "oklch(85% 0.07 82)", "oklch(95% 0.03 88)"]
+      },
+      "white": {
+        "role": "neutral",
+        "displayName": "White",
+        "canonical": "#ffffff",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(27% 0 0)", "oklch(39% 0 0)", "oklch(51% 0 0)", "oklch(63% 0 0)", "oklch(75% 0 0)", "oklch(87% 0 0)", "oklch(100% 0 0)"]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Clear Canvas",
+        "canonical": "#ffffff",
+        "tonalRamp": ["oklch(15% 0.004 260)", "oklch(27% 0.004 260)", "oklch(39% 0.004 260)", "oklch(51% 0.004 260)", "oklch(63% 0.004 260)", "oklch(75% 0.004 260)", "oklch(88% 0.004 260)", "oklch(100% 0.004 260)"]
+      },
+      "surface-subtle": {
+        "role": "neutral",
+        "displayName": "Subtle Canvas",
+        "canonical": "#f9fafb",
+        "tonalRamp": ["oklch(15% 0.006 260)", "oklch(27% 0.006 260)", "oklch(39% 0.006 260)", "oklch(51% 0.006 260)", "oklch(63% 0.006 260)", "oklch(75% 0.006 260)", "oklch(87% 0.006 260)", "oklch(98% 0.006 260)"]
+      },
+      "surface-muted": {
+        "role": "neutral",
+        "displayName": "Muted Canvas",
+        "canonical": "#f3f4f6",
+        "tonalRamp": ["oklch(14% 0.008 260)", "oklch(26% 0.008 260)", "oklch(38% 0.008 260)", "oklch(50% 0.008 260)", "oklch(62% 0.008 260)", "oklch(74% 0.008 260)", "oklch(86% 0.008 260)", "oklch(96% 0.008 260)"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Operational Ink",
+        "canonical": "#030712",
+        "tonalRamp": ["oklch(12% 0.02 265)", "oklch(24% 0.02 265)", "oklch(36% 0.02 265)", "oklch(48% 0.02 265)", "oklch(60% 0.02 265)", "oklch(72% 0.02 265)", "oklch(84% 0.02 265)", "oklch(96% 0.02 265)"]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#4b5563",
+        "tonalRamp": ["oklch(15% 0.018 255)", "oklch(27% 0.018 255)", "oklch(39% 0.018 255)", "oklch(51% 0.018 255)", "oklch(63% 0.018 255)", "oklch(75% 0.018 255)", "oklch(87% 0.018 255)", "oklch(96% 0.018 255)"]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Fine Border",
+        "canonical": "rgb(15 23 42 / 0.14)",
+        "tonalRamp": ["oklch(15% 0.02 260)", "oklch(27% 0.02 260)", "oklch(39% 0.02 260)", "oklch(51% 0.02 260)", "oklch(63% 0.02 260)", "oklch(75% 0.02 260)", "oklch(87% 0.02 260)", "oklch(96% 0.02 260)"]
+      },
+      "dark-canvas": {
+        "role": "neutral",
+        "displayName": "Deep Watch",
+        "canonical": "#030712",
+        "tonalRamp": ["oklch(12% 0.02 265)", "oklch(24% 0.02 265)", "oklch(36% 0.02 265)", "oklch(48% 0.02 265)", "oklch(60% 0.02 265)", "oklch(72% 0.02 265)", "oklch(84% 0.02 265)", "oklch(96% 0.02 265)"]
+      },
+      "dark-surface-subtle": {
+        "role": "neutral",
+        "displayName": "Deep Watch Subtle",
+        "canonical": "#0b1120",
+        "tonalRamp": ["oklch(14% 0.025 260)", "oklch(25% 0.025 260)", "oklch(36% 0.025 260)", "oklch(47% 0.025 260)", "oklch(58% 0.025 260)", "oklch(69% 0.025 260)", "oklch(82% 0.025 260)", "oklch(95% 0.025 260)"]
+      },
+      "dark-surface": {
+        "role": "neutral",
+        "displayName": "Night Panel",
+        "canonical": "#111827",
+        "tonalRamp": ["oklch(16% 0.025 260)", "oklch(27% 0.025 260)", "oklch(38% 0.025 260)", "oklch(49% 0.025 260)", "oklch(60% 0.025 260)", "oklch(71% 0.025 260)", "oklch(83% 0.025 260)", "oklch(95% 0.025 260)"]
+      },
+      "dark-ink": {
+        "role": "neutral",
+        "displayName": "Night Ink",
+        "canonical": "#f9fafb",
+        "tonalRamp": ["oklch(15% 0.006 260)", "oklch(27% 0.006 260)", "oklch(39% 0.006 260)", "oklch(51% 0.006 260)", "oklch(63% 0.006 260)", "oklch(75% 0.006 260)", "oklch(87% 0.006 260)", "oklch(98% 0.006 260)"]
+      },
+      "dark-ink-muted": {
+        "role": "neutral",
+        "displayName": "Night Muted Ink",
+        "canonical": "#9ca3af",
+        "tonalRamp": ["oklch(17% 0.012 255)", "oklch(29% 0.012 255)", "oklch(41% 0.012 255)", "oklch(53% 0.012 255)", "oklch(65% 0.012 255)", "oklch(77% 0.012 255)", "oklch(87% 0.012 255)", "oklch(96% 0.012 255)"]
+      },
+      "dark-border": {
+        "role": "neutral",
+        "displayName": "Night Fine Border",
+        "canonical": "rgb(255 255 255 / 0.12)",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(27% 0 0)", "oklch(39% 0 0)", "oklch(51% 0 0)", "oklch(63% 0 0)", "oklch(75% 0 0)", "oklch(87% 0 0)", "oklch(100% 0 0)"]
+      },
+      "success": {
+        "role": "secondary",
+        "displayName": "Operational Green",
+        "canonical": "#15803d",
+        "tonalRamp": ["oklch(20% 0.07 145)", "oklch(30% 0.10 145)", "oklch(40% 0.13 145)", "oklch(50% 0.15 145)", "oklch(60% 0.14 145)", "oklch(70% 0.12 145)", "oklch(82% 0.08 145)", "oklch(95% 0.03 145)"]
+      },
+      "success-soft": {
+        "role": "secondary",
+        "displayName": "Operational Green Soft",
+        "canonical": "#f0fdf4",
+        "tonalRamp": ["oklch(20% 0.03 145)", "oklch(31% 0.04 145)", "oklch(43% 0.05 145)", "oklch(55% 0.05 145)", "oklch(67% 0.05 145)", "oklch(79% 0.04 145)", "oklch(89% 0.03 145)", "oklch(97% 0.02 145)"]
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "Incident Red",
+        "canonical": "#b91c1c",
+        "tonalRamp": ["oklch(20% 0.08 25)", "oklch(30% 0.12 25)", "oklch(40% 0.16 25)", "oklch(50% 0.19 25)", "oklch(60% 0.18 25)", "oklch(71% 0.14 25)", "oklch(83% 0.09 25)", "oklch(95% 0.04 25)"]
+      },
+      "danger-soft": {
+        "role": "secondary",
+        "displayName": "Incident Red Soft",
+        "canonical": "#fef2f2",
+        "tonalRamp": ["oklch(20% 0.03 25)", "oklch(31% 0.04 25)", "oklch(43% 0.05 25)", "oklch(55% 0.05 25)", "oklch(67% 0.05 25)", "oklch(79% 0.04 25)", "oklch(89% 0.03 25)", "oklch(97% 0.02 25)"]
+      },
+      "warning": {
+        "role": "secondary",
+        "displayName": "Caution Ochre",
+        "canonical": "#854d0e",
+        "tonalRamp": ["oklch(20% 0.06 80)", "oklch(30% 0.09 80)", "oklch(40% 0.12 80)", "oklch(50% 0.14 80)", "oklch(60% 0.13 80)", "oklch(71% 0.10 80)", "oklch(83% 0.07 80)", "oklch(95% 0.03 80)"]
+      },
+      "warning-soft": {
+        "role": "secondary",
+        "displayName": "Caution Ochre Soft",
+        "canonical": "#fefce8",
+        "tonalRamp": ["oklch(20% 0.03 95)", "oklch(31% 0.04 95)", "oklch(43% 0.05 95)", "oklch(55% 0.05 95)", "oklch(67% 0.05 95)", "oklch(79% 0.04 95)", "oklch(89% 0.03 95)", "oklch(97% 0.02 95)"]
+      },
+      "pending": {
+        "role": "secondary",
+        "displayName": "Pending Slate",
+        "canonical": "#475569",
+        "tonalRamp": ["oklch(18% 0.03 250)", "oklch(29% 0.04 250)", "oklch(40% 0.05 250)", "oklch(51% 0.05 250)", "oklch(62% 0.05 250)", "oklch(73% 0.04 250)", "oklch(84% 0.03 250)", "oklch(95% 0.02 250)"]
+      },
+      "pending-soft": {
+        "role": "secondary",
+        "displayName": "Pending Slate Soft",
+        "canonical": "#f1f5f9",
+        "tonalRamp": ["oklch(18% 0.02 250)", "oklch(29% 0.025 250)", "oklch(40% 0.03 250)", "oklch(51% 0.03 250)", "oklch(62% 0.03 250)", "oklch(73% 0.025 250)", "oklch(85% 0.02 250)", "oklch(96% 0.015 250)"]
+      }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Page Headline", "purpose": "Primary application page titles." },
+      "title": { "displayName": "Section Title", "purpose": "Sections, cards, and task steps." },
+      "body": { "displayName": "Body", "purpose": "Primary explanations and reading copy." },
+      "body-small": { "displayName": "Application Body", "purpose": "Controls, tables, metadata, and dense product copy." },
+      "label": { "displayName": "Categorical Label", "purpose": "Compact metadata only; never an eyebrow above a heading." },
+      "mono": { "displayName": "Operational Mono", "purpose": "URLs, intervals, percentages, and aligned technical evidence." }
+    },
+    "shadows": [
+      { "name": "control-grounding", "value": "0 1px 2px rgb(0 0 0 / 0.12)", "purpose": "Filled primary buttons only." },
+      { "name": "focus-halo", "value": "0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent)", "purpose": "Focused inputs and fields." },
+      { "name": "blocking-float", "value": "0 8px 32px rgb(0 0 0 / 0.12)", "purpose": "Compact loader panel above its scrim." },
+      { "name": "drawer-lift", "value": "0 25px 50px -12px rgb(0 0 0 / 0.25)", "purpose": "Temporary mobile navigation drawer." }
+    ],
+    "motion": [
+      { "name": "state-standard", "value": "180ms ease", "purpose": "Buttons, inputs, and routine state changes." },
+      { "name": "navigation-fast", "value": "120ms ease", "purpose": "Navigation hover and active feedback." },
+      { "name": "loader-fade", "value": "150ms ease", "purpose": "Blocking loader entry." },
+      { "name": "skeleton-sweep", "value": "1.3s ease-in-out infinite", "purpose": "Loading placeholders only." },
+      { "name": "state-reveal", "value": "220ms cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Newly inserted alerts and recovery panels." },
+      { "name": "status-receipt", "value": "480ms cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "One-shot waveform confirmation after fresh status arrives." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The decisive action on an operational surface.",
+      "html": "<button class=\"ds-btn-primary\">Run checks</button>",
+      "css": ".ds-btn-primary { display:inline-flex; align-items:center; justify-content:center; gap:.375rem; min-height:2.75rem; padding:.625rem 1rem; border:0; border-radius:.5rem; background:var(--color-primary-solid, #b45309); color:#fff; font:600 .875rem/1.25rem 'Inter Variable', Inter, system-ui, sans-serif; box-shadow:0 1px 2px rgb(0 0 0 / .12); transition:background-color 180ms ease, box-shadow 180ms ease; cursor:pointer; } .ds-btn-primary:hover { background:var(--color-primary-hover, #92400e); } .ds-btn-primary:active { background:var(--color-primary-active, #78350f); } .ds-btn-primary:focus-visible { outline:2px solid var(--focus-ring, #b45309); outline-offset:3px; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "A secondary action that preserves the flat structural hierarchy.",
+      "html": "<button class=\"ds-btn-outline\">Cancel</button>",
+      "css": ".ds-btn-outline { display:inline-flex; align-items:center; justify-content:center; min-height:2.75rem; padding:.625rem 1rem; border:1px solid var(--border-color, rgb(15 23 42 / .14)); border-radius:.5rem; background:rgb(var(--card, 255 255 255)); color:rgb(var(--text-muted, 75 85 99)); font:600 .875rem/1.25rem 'Inter Variable', Inter, system-ui, sans-serif; transition:color 180ms ease, background-color 180ms ease; cursor:pointer; } .ds-btn-outline:hover { background:rgb(var(--bg-muted, 243 244 246)); color:rgb(var(--text, 3 7 18)); } .ds-btn-outline:focus-visible { outline:2px solid var(--focus-ring, #b45309); outline-offset:3px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "description": "A quiet tertiary action for low-risk controls and icon actions.",
+      "html": "<button class=\"ds-btn-ghost\">View monitors</button>",
+      "css": ".ds-btn-ghost { display:inline-flex; align-items:center; justify-content:center; min-height:2.75rem; padding:.625rem 1rem; border:0; border-radius:.5rem; background:transparent; color:rgb(var(--text-muted, 75 85 99)); font:600 .875rem/1.25rem 'Inter Variable', Inter, system-ui, sans-serif; transition:color 180ms ease, background-color 180ms ease; cursor:pointer; } .ds-btn-ghost:hover { background:rgb(var(--bg-muted, 243 244 246)); color:rgb(var(--text, 3 7 18)); } .ds-btn-ghost:focus-visible { outline:2px solid var(--focus-ring, #b45309); outline-offset:3px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "The canonical compact field for configuration and search.",
+      "html": "<label class=\"ds-field\"><span>Monitor name</span><input class=\"ds-input\" value=\"API health\" /></label>",
+      "css": ".ds-field { display:grid; gap:.3125rem; color:rgb(var(--text-muted, 75 85 99)); font:500 .8125rem/1.25rem 'Inter Variable', Inter, system-ui, sans-serif; } .ds-input { width:100%; min-height:2.75rem; padding:.5625rem .75rem; border:1px solid var(--border-color, rgb(15 23 42 / .14)); border-radius:.5rem; background:rgb(var(--bg, 255 255 255)); color:rgb(var(--text, 3 7 18)); font:400 .875rem/1.5rem 'Inter Variable', Inter, system-ui, sans-serif; outline:none; transition:border-color 180ms ease, box-shadow 180ms ease; } .ds-input:focus { border-color:var(--color-primary, #b45309); box-shadow:0 0 0 3px color-mix(in srgb, var(--color-primary, #b45309) 18%, transparent); }"
+    },
+    {
+      "name": "Operational Status Badge",
+      "kind": "chip",
+      "refersTo": "badge-success",
+      "description": "A semantic status label that pairs text with a compact signal dot.",
+      "html": "<span class=\"ds-badge-up\"><span class=\"ds-status-dot\"></span>Operational</span>",
+      "css": ".ds-badge-up { display:inline-flex; align-items:center; gap:.25rem; padding:.1875rem .5625rem; border-radius:999px; background:rgb(var(--success-bg, 240 253 244)); color:var(--success-fg, #15803d); font:500 .75rem/1rem 'Inter Variable', Inter, system-ui, sans-serif; letter-spacing:.01em; } .ds-status-dot { width:.375rem; height:.375rem; border-radius:50%; background:currentColor; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The default flat container for grouped operational content.",
+      "html": "<section class=\"ds-card\"><strong>Needs attention</strong><p>Review monitors that are down or awaiting a first check.</p></section>",
+      "css": ".ds-card { padding:1.5rem; border:1px solid var(--border-color, rgb(15 23 42 / .14)); border-radius:.75rem; background:rgb(var(--card, 255 255 255)); color:rgb(var(--text, 3 7 18)); font:400 .875rem/1.5rem 'Inter Variable', Inter, system-ui, sans-serif; } .ds-card strong { display:block; font-weight:600; } .ds-card p { margin:.25rem 0 0; color:rgb(var(--text-muted, 75 85 99)); }"
+    },
+    {
+      "name": "Active Navigation Link",
+      "kind": "nav",
+      "refersTo": "nav-active",
+      "description": "The selected application destination with a restrained leading marker.",
+      "html": "<a class=\"ds-nav-active\" href=\"#\">Dashboard</a>",
+      "css": ".ds-nav-active { display:flex; align-items:center; min-height:2.75rem; padding:.625rem .75rem; border-radius:.5rem; background:color-mix(in srgb, var(--color-primary, #b45309) 12%, transparent); color:var(--color-primary, #b45309); font:500 .875rem/1.3125rem 'Inter Variable', Inter, system-ui, sans-serif; text-decoration:none; box-shadow:inset 3px 0 0 var(--color-primary, #b45309); transition:background-color 120ms ease, color 120ms ease; } .ds-nav-active:hover { background:color-mix(in srgb, var(--color-primary, #b45309) 16%, transparent); } .ds-nav-active:focus-visible { outline:2px solid var(--focus-ring, #b45309); outline-offset:3px; }"
+    },
+    {
+      "name": "Monitor Card",
+      "kind": "custom",
+      "description": "The signature status-first row for a monitored service.",
+      "html": "<a class=\"ds-monitor-card\" href=\"#\"><span class=\"ds-monitor-rail\"></span><span class=\"ds-monitor-copy\"><span class=\"ds-monitor-heading\"><strong>API health</strong><span class=\"ds-badge-up\"><span class=\"ds-status-dot\"></span>Operational</span></span><code>https://api.example.com/health</code></span><span class=\"ds-monitor-metric\"><strong>99.98%</strong><small>uptime</small></span></a>",
+      "css": ".ds-monitor-card { position:relative; display:flex; align-items:center; gap:.75rem; padding:1rem 1.25rem; overflow:hidden; border:1px solid var(--border-color, rgb(15 23 42 / .14)); border-radius:.75rem; background:rgb(var(--card, 255 255 255)); color:rgb(var(--text, 3 7 18)); text-decoration:none; font-family:'Inter Variable', Inter, system-ui, sans-serif; transition:border-color 180ms ease; } .ds-monitor-card:hover { border-color:var(--color-primary, #b45309); } .ds-monitor-card:focus-visible { outline:2px solid var(--focus-ring, #b45309); outline-offset:3px; } .ds-monitor-rail { position:absolute; inset:0 auto 0 0; width:2px; background:var(--success-fg, #15803d); opacity:.6; } .ds-monitor-copy { min-width:0; flex:1; display:grid; gap:.125rem; padding-left:.5rem; } .ds-monitor-heading { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; } .ds-monitor-copy strong { font-size:.875rem; font-weight:600; } .ds-monitor-copy code { overflow:hidden; color:rgb(var(--text-muted, 75 85 99)); font:400 .75rem/1rem 'JetBrains Mono Variable', 'JetBrains Mono', monospace; text-overflow:ellipsis; white-space:nowrap; } .ds-monitor-metric { display:grid; justify-items:end; color:rgb(var(--text-muted, 75 85 99)); } .ds-monitor-metric strong { color:var(--success-fg, #15803d); font:600 .875rem/1.25rem 'JetBrains Mono Variable', 'JetBrains Mono', monospace; } .ds-monitor-metric small { font-size:.6875rem; }"
+    },
+    {
+      "name": "Error Alert",
+      "kind": "custom",
+      "description": "A structural semantic alert with a clear recovery action.",
+      "html": "<div class=\"ds-alert\" role=\"alert\"><span class=\"ds-alert-mark\">!</span><span>We couldn't load your monitors.</span><button>Try again</button></div>",
+      "css": ".ds-alert { display:flex; align-items:center; gap:.75rem; padding:.875rem 1rem; border:1px solid color-mix(in srgb, var(--danger-fg, #b91c1c) 30%, transparent); border-radius:.75rem; background:rgb(var(--danger-bg, 254 242 242)); color:var(--danger-fg, #b91c1c); font:400 .875rem/1.25rem 'Inter Variable', Inter, system-ui, sans-serif; } .ds-alert-mark { display:grid; width:1.5rem; height:1.5rem; place-items:center; flex:none; border:1px solid currentColor; border-radius:50%; font-weight:700; } .ds-alert span:nth-child(2) { flex:1; } .ds-alert button { min-height:2.75rem; padding:.625rem 1rem; border:1px solid currentColor; border-radius:.5rem; background:transparent; color:inherit; font-weight:600; cursor:pointer; } .ds-alert button:hover { background:color-mix(in srgb, currentColor 8%, transparent); } .ds-alert button:focus-visible { outline:2px solid currentColor; outline-offset:3px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Watchtower",
+    "overview": "Pingflare is a calm operational vantage point: always alert, never theatrical. The interface uses a restrained, dependable visual vocabulary so self-hosters can scan status, identify risk, and act without decorative noise competing with live system truth.\n\nThe system is flat and structural. Hierarchy comes from neutral surface shifts, fine borders, compact spacing, and disciplined typography; Signal Amber is reserved for the active path and decisive actions. Light and dark themes are equally first-class, with the same information hierarchy expressed through paired neutral roles rather than separate visual personalities.\n\nThe product should feel calm, precise, and self-possessed. It rejects glossy SaaS spectacle, oversized marketing typography inside the application, and color used without operational meaning.",
+    "keyCharacteristics": [
+      "Status-first information hierarchy",
+      "Flat surfaces separated by fine borders and tonal shifts",
+      "Compact 44px controls with gently curved corners",
+      "Signal Amber used sparingly for action and active state",
+      "Inter for interface clarity; JetBrains Mono for operational data",
+      "Equal visual discipline in light and dark themes"
+    ],
+    "rules": [
+      { "name": "The Signal Economy Rule", "body": "Signal Amber is scarce: use it for the primary action, active location, focus, or a meaningful selected state—not as ambient decoration.", "section": "colors" },
+      { "name": "The Status Truth Rule", "body": "Green, red, caution, and pending colors describe real system state. Never use them decoratively or let color carry status without text or icon support.", "section": "colors" },
+      { "name": "The Operational Readability Rule", "body": "Use mono type for data that benefits from stable character widths, never as a general-purpose technical costume. Everything else stays in Inter.", "section": "typography" },
+      { "name": "The Flat-by-Default Rule", "body": "If a border or tonal shift can establish the relationship, do not add a shadow. Elevation belongs to transient layers and focused interaction.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep operational state, freshness, and required action visually dominant over decoration.",
+      "Do use Signal Amber sparingly for primary actions, focus, selection, and active navigation.",
+      "Do preserve 2.75rem minimum interactive height and visible keyboard focus.",
+      "Do use neutral surface shifts and one-pixel borders as the default hierarchy mechanism.",
+      "Do reserve JetBrains Mono for URLs, identifiers, intervals, percentages, and aligned technical evidence.",
+      "Do carry the same semantic hierarchy into dark mode rather than merely inverting colors."
+    ],
+    "donts": [
+      "Don't use the legacy #ff6633 Tailwind-config orange as a new visual source of truth; the rendered system uses Signal Amber.",
+      "Don't add glossy gradients, glass surfaces, or broad decorative shadows to routine application UI.",
+      "Don't use success, danger, warning, or pending colors without genuine system meaning and a non-color cue.",
+      "Don't introduce oversized marketing headlines or a separate display typeface inside the authenticated application.",
+      "Don't place shadows on every card; reserve elevation for transient layers and interaction response.",
+      "Don't replace labeled operational actions with unexplained icon-only controls."
+    ]
+  }
+}

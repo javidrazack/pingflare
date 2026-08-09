@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { AgentMetricHistory, AgentMetricPoint } from '$lib/api'
   import { formatTs } from '$lib/utils'
+  import { t } from '$lib/i18n'
 
   export let history: AgentMetricHistory
   export let height = 180
@@ -68,31 +69,31 @@
 
 {#if points.length < 2}
   <div class="flex min-h-44 items-center justify-center text-sm" style="color: rgb(var(--text-muted))">
-    Historical data will appear after two five-minute samples.
+    {$t('agentChart.notEnoughData')}
   </div>
 {:else}
   <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
     <div>
-      <div class="text-xs" style="color: rgb(var(--text-muted))">CPU average</div>
+      <div class="text-xs" style="color: rgb(var(--text-muted))">{$t('agentChart.cpuAverage')}</div>
       <div class="mt-1 font-mono text-lg font-semibold tabular-nums">{cpuAverage}%</div>
     </div>
     <div>
-      <div class="text-xs" style="color: rgb(var(--text-muted))">CPU peak</div>
+      <div class="text-xs" style="color: rgb(var(--text-muted))">{$t('agentChart.cpuPeak')}</div>
       <div class="mt-1 font-mono text-lg font-semibold tabular-nums">{cpuMaximum}%</div>
     </div>
     <div>
-      <div class="text-xs" style="color: rgb(var(--text-muted))">RAM average</div>
+      <div class="text-xs" style="color: rgb(var(--text-muted))">{$t('agentChart.ramAverage')}</div>
       <div class="mt-1 font-mono text-lg font-semibold tabular-nums">{ramAverage}%</div>
     </div>
     <div>
-      <div class="text-xs" style="color: rgb(var(--text-muted))">RAM peak</div>
+      <div class="text-xs" style="color: rgb(var(--text-muted))">{$t('agentChart.ramPeak')}</div>
       <div class="mt-1 font-mono text-lg font-semibold tabular-nums">{ramMaximum}%</div>
     </div>
   </div>
 
   <div class="flex gap-3 text-xs" style="color: rgb(var(--text-muted))">
-    <span class="inline-flex items-center gap-1.5"><span class="h-0.5 w-4 bg-amber-600"></span>CPU</span>
-    <span class="inline-flex items-center gap-1.5"><span class="h-0.5 w-4 bg-sky-500"></span>RAM</span>
+    <span class="inline-flex items-center gap-1.5"><span class="h-0.5 w-4" style="background: var(--chart-cpu)"></span>CPU</span>
+    <span class="inline-flex items-center gap-1.5"><span class="h-0.5 w-4" style="background: var(--chart-ram)"></span>RAM</span>
     <span class="ml-auto">0–100%</span>
   </div>
 
@@ -104,9 +105,9 @@
     aria-valuemax={points.length - 1}
     aria-valuenow={selectedIndex ?? points.length - 1}
     aria-valuetext={selected
-      ? `${formatTs(selected.sampledAt)}, CPU ${selected.cpu.avg} percent, RAM ${selected.ram.avg} percent`
-      : `Latest sample, CPU ${points[points.length - 1].cpu.avg} percent, RAM ${points[points.length - 1].ram.avg} percent`}
-    aria-label="CPU and RAM usage history. Use left and right arrow keys to inspect samples."
+      ? $t('agentChart.sampleValue', { time: formatTs(selected.sampledAt), cpu: selected.cpu.avg, ram: selected.ram.avg })
+      : $t('agentChart.latestValue', { cpu: points[points.length - 1].cpu.avg, ram: points[points.length - 1].ram.avg })}
+    aria-label={$t('agentChart.ariaLabel')}
     class="relative mt-3 cursor-crosshair rounded-lg"
     style="height:{height}px; background: rgb(var(--bg-subtle))"
     on:mousemove={selectFromPointer}
@@ -128,8 +129,8 @@
         />
       {/each}
       {#each [
-        { value: history.thresholds.cpu, color: '#b45309' },
-        { value: history.thresholds.ram, color: '#0ea5e9' },
+        { value: history.thresholds.cpu, color: 'var(--chart-cpu)' },
+        { value: history.thresholds.ram, color: 'var(--chart-ram)' },
       ] as threshold}
         {@const y = thresholdY(threshold.value)}
         {#if y !== null}
@@ -149,14 +150,14 @@
       <path
         d={linePath('cpu')}
         fill="none"
-        stroke="#b45309"
+        stroke="var(--chart-cpu)"
         stroke-width="2"
         vector-effect="non-scaling-stroke"
       />
       <path
         d={linePath('ram')}
         fill="none"
-        stroke="#0ea5e9"
+        stroke="var(--chart-ram)"
         stroke-width="2"
         vector-effect="non-scaling-stroke"
       />
@@ -173,10 +174,10 @@
   <div class="mt-2 min-h-6 text-xs" aria-live="polite" style="color: rgb(var(--text-muted))">
     {#if selected}
       <span class="tabular-nums">{formatTs(selected.sampledAt)}</span>
-      <span class="ml-3 font-mono text-amber-700 dark:text-amber-400">CPU {selected.cpu.avg}%</span>
-      <span class="ml-3 font-mono text-sky-600 dark:text-sky-400">RAM {selected.ram.avg}%</span>
+      <span class="ml-3 font-mono" style="color: var(--chart-cpu)">CPU {selected.cpu.avg}%</span>
+      <span class="ml-3 font-mono" style="color: var(--chart-ram)">RAM {selected.ram.avg}%</span>
     {:else}
-      <span>Five-minute samples. Dashed lines show configured thresholds.</span>
+      <span>{$t('agentChart.hint')}</span>
     {/if}
   </div>
 {/if}

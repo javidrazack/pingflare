@@ -117,7 +117,7 @@
   <header style="background-color: rgb(var(--bg-subtle)); border-bottom: 1px solid var(--border-color)">
     <div class="max-w-5xl mx-auto flex items-center h-14 px-4 gap-3">
       <a href="/" aria-label="Pingflare" class="shrink-0 mr-1">
-        <img src="/logo.png" alt="Pingflare" class="h-6 object-contain" />
+        <img src="/logo-64.webp" alt="Pingflare" width="24" height="24" class="h-6 object-contain" />
       </a>
       <div class="flex items-center gap-1.5 text-sm flex-1 min-w-0">
         <a href="/s/{slug}" class="shrink-0 font-medium transition-colors hover:text-[var(--color-primary)]"
@@ -160,7 +160,7 @@
       <div class="rounded p-8 max-w-sm mx-auto text-center space-y-4"
         style="background-color: rgb(var(--card)); border: 1px solid var(--border-color)">
         <div class="w-10 h-10 rounded-full flex items-center justify-center mx-auto"
-          style="background: rgb(249 115 22 / .1); color: var(--color-primary)">
+          style="background: rgb(var(--warning-bg)); color: var(--warning-fg)">
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/>
           </svg>
@@ -169,7 +169,8 @@
           <p class="text-xs text-red-400">{$t('pub.wrongPassword')}</p>
         {/if}
         <form on:submit|preventDefault={submitPassword} class="space-y-3">
-          <input type="password" bind:value={password} placeholder={$t('pub.enterPassword')} required class="input" />
+          <label class="sr-only" for="status-monitor-password">{$t('pub.enterPassword')}</label>
+          <input id="status-monitor-password" type="password" bind:value={password} placeholder={$t('pub.enterPassword')} required class="input" />
           <button type="submit" class="btn-primary w-full">
             {loading ? $t('pub.checking') : $t('pub.accessPage')}
           </button>
@@ -179,8 +180,8 @@
 
   {:else if error}
     <div class="max-w-5xl mx-auto px-4 py-10">
-      <div class="flex items-center gap-2 px-4 py-3 rounded text-sm"
-        style="background: rgb(239 68 68 / .08); color: #ef4444; border: 1px solid rgb(239 68 68 / .3)">
+      <div class="flex items-center gap-2 px-4 py-3 rounded text-sm" role="alert"
+        style="background: rgb(var(--danger-bg)); color: var(--danger-fg); border: 1px solid color-mix(in srgb, var(--danger-fg) 30%, transparent)">
         <Icon name="exclamation-triangle" size={14} />{error}
       </div>
     </div>
@@ -225,7 +226,7 @@
             {data.avgResponseMs != null ? `${data.avgResponseMs}ms` : '-'}
           </div>
         </div>
-        <div class="stat-card" style="{openIncidents > 0 ? 'border-color: rgb(239 68 68 / .45)' : ''}">
+        <div class="stat-card" style="{openIncidents > 0 ? 'border-color: color-mix(in srgb, var(--danger-fg) 45%, var(--border-color))' : ''}">
           <div class="text-xs mb-2" style="color: rgb(var(--text-muted))">{$t('monitor.openIncidents')}</div>
           <div class="text-2xl font-bold tracking-tight tabular-nums {openIncidents > 0 ? 'text-red-400' : ''}"
             style="{openIncidents === 0 ? 'color: rgb(var(--text))' : ''}">{openIncidents}</div>

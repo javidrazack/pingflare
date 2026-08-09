@@ -1,6 +1,6 @@
 <script lang="ts">
   export let status: 'up' | 'down' | 'pending' = 'up'
-  $: color = status === 'up' ? '#22c55e' : status === 'down' ? '#ef4444' : '#f97316'
+  $: color = status === 'up' ? 'var(--success-fg)' : status === 'down' ? 'var(--danger-fg)' : 'var(--warning-fg)'
 </script>
 
 <div class="absolute bottom-0 left-0 right-0 overflow-hidden" style="height: 28px">

@@ -157,8 +157,8 @@
   <div class="px-4 py-5 md:px-8 md:py-8 max-w-5xl mx-auto space-y-4">
 
     {#if error}
-      <div class="flex items-center gap-2 px-4 py-3 rounded text-sm"
-        style="background: rgb(239 68 68 / .08); color: #ef4444; border: 1px solid rgb(239 68 68 / .3)">
+      <div class="flex items-center gap-2 px-4 py-3 rounded text-sm" role="alert"
+        style="background: rgb(var(--danger-bg)); color: var(--danger-fg); border: 1px solid color-mix(in srgb, var(--danger-fg) 30%, transparent)">
         <Icon name="exclamation-triangle" size={14} />{error}
       </div>
     {/if}
@@ -191,6 +191,7 @@
             <span style="color: rgb(var(--text))">{$t('statusPages.enablePassword')}</span>
           </label>
           {#if formEnablePassword}
+            <label class="sr-only" for="sp-pass">{$t('statusPages.placeholderPwd')}</label>
             <input id="sp-pass" class="input mt-2" type="password" bind:value={formPassword}
               placeholder={$t('statusPages.placeholderPwd')} />
           {/if}
@@ -235,7 +236,7 @@
         bind:seoDescription={formSeoDescription}
         monitors={formShowAllMonitors ? allMonitors : allMonitors.filter(m => formMonitorIds.includes(m.id))}
       />
-      {#if formError}<p class="text-sm text-red-400">{formError}</p>{/if}
+      {#if formError}<p class="text-sm" style="color: var(--danger-fg)" role="alert">{formError}</p>{/if}
       <div class="flex gap-2">
         <button class="btn-primary" on:click={save} disabled={saving}>
           {saving ? $t('statusPages.creating') : $t('statusPages.createPage')}
@@ -270,6 +271,7 @@
             <span style="color: rgb(var(--text))">{$t('statusPages.enablePassword')}</span>
           </label>
           {#if formEnablePassword}
+            <label class="sr-only" for="ep-pass">{$t('statusPages.placeholderPwd')}</label>
             <input id="ep-pass" class="input mt-2" type="password" bind:value={formPassword}
               placeholder={editPage.passwordHash ? '••••••••' : $t('statusPages.placeholderPwd')} />
             {#if editPage.passwordHash}
@@ -317,7 +319,7 @@
         bind:seoDescription={formSeoDescription}
         monitors={formShowAllMonitors ? allMonitors : allMonitors.filter(m => formMonitorIds.includes(m.id))}
       />
-      {#if formError}<p class="text-sm text-red-400">{formError}</p>{/if}
+      {#if formError}<p class="text-sm" style="color: var(--danger-fg)" role="alert">{formError}</p>{/if}
       <div class="flex gap-2">
         <button class="btn-primary" on:click={save} disabled={saving}>
           {saving ? $t('statusPages.creating') : $t('statusPages.saveChanges')}

@@ -48,28 +48,40 @@
 
   let selectedChannelIds: string[] = []
   let allChannels: NotificationChannel[] = []
+  let loadingChannels = true
+  let channelLoadError = ''
 
   let saving = false
   let error = ''
   let step = 1
 
-  const steps = [
-    { number: 1, label: 'Type' },
-    { number: 2, label: 'Configure' },
-    { number: 3, label: 'Alerting' },
-    { number: 4, label: 'Review' },
+  $: steps = [
+    { number: 1, label: $t('monitorForm.stepType') },
+    { number: 2, label: $t('monitorForm.stepConfigure') },
+    { number: 3, label: $t('monitorForm.stepAlerting') },
+    { number: 4, label: $t('monitorForm.stepReview') },
   ]
 
   const METHODS = ['HEAD', 'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 
-  onMount(async () => {
-    allChannels = await api.notifications.list()
-    if (mode === 'edit' && monitor.id) {
-      selectedChannelIds = await api.monitors.channels(monitor.id)
-    } else {
-      selectedChannelIds = allChannels.filter(ch => ch.isDefault).map(ch => ch.id)
+  async function loadChannels() {
+    loadingChannels = true
+    channelLoadError = ''
+    try {
+      allChannels = await api.notifications.list()
+      if (mode === 'edit' && monitor.id) {
+        selectedChannelIds = await api.monitors.channels(monitor.id)
+      } else {
+        selectedChannelIds = allChannels.filter(ch => ch.isDefault).map(ch => ch.id)
+      }
+    } catch {
+      channelLoadError = $t('monitorForm.channelsLoadFailed')
+    } finally {
+      loadingChannels = false
     }
-  })
+  }
+
+  onMount(loadChannels)
 
   function parseHeaders(raw: string): Record<string, string> {
     const result: Record<string, string> = {}
@@ -152,15 +164,15 @@
     error = ''
     if (step === 2) {
       if (!name.trim()) {
-        error = 'Give this monitor a clear name before continuing.'
+        error = $t('monitorForm.nameRequired')
         return
       }
       if ((tab === 'http' || tab === 'ping') && !url.trim()) {
-        error = 'Enter the URL to monitor before continuing.'
+        error = $t('monitorForm.urlRequired')
         return
       }
       if (tab === 'dns' && (!dnsResolverUrl.trim() || !dnsHostname.trim())) {
-        error = 'Enter both the DNS resolver and hostname before continuing.'
+        error = $t('monitorForm.dnsRequired')
         return
       }
     }
@@ -170,16 +182,16 @@
 
 <form on:submit|preventDefault={save} class="space-y-6">
   {#if mode === 'create'}
-  <ol class="grid grid-cols-4 gap-2" aria-label="Monitor setup progress">
+  <ol class="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label={$t('monitorForm.setupProgress')}>
     {#each steps as item}
       <li aria-current={step === item.number ? 'step' : undefined}>
         <button
           type="button"
-          class="w-full min-h-0 text-left rounded-lg border p-2 transition-colors {step === item.number ? 'border-primary bg-primary-soft' : step > item.number ? 'border-[rgb(var(--border-strong))] bg-[rgb(var(--bg-subtle))]' : 'border-[rgb(var(--border))]'}"
+          class="min-h-11 w-full rounded-lg border p-2 text-left transition-colors {step === item.number ? 'border-primary bg-primary-soft' : step > item.number ? 'bg-[rgb(var(--bg-subtle))]' : ''}"
           disabled={item.number > step}
           on:click={() => step = item.number}
         >
-          <span class="block text-[11px] font-semibold uppercase tracking-wide" style="color: rgb(var(--text-muted))">Step {item.number}</span>
+          <span class="block text-[11px] font-semibold uppercase tracking-wide" style="color: rgb(var(--text-muted))">{$t('monitorForm.stepNumber', { number: item.number })}</span>
           <span class="block text-sm font-semibold">{item.label}</span>
         </button>
       </li>
@@ -190,40 +202,40 @@
   {#if mode === 'create' && step === 1}
   <section aria-labelledby="monitor-type-title" class="space-y-4">
     <div>
-      <h2 id="monitor-type-title" class="text-lg font-semibold">What do you want to monitor?</h2>
-      <p class="mt-1 text-sm" style="color: rgb(var(--text-muted))">Choose the signal that best represents the service you need to protect.</p>
+      <h2 id="monitor-type-title" class="text-lg font-semibold">{$t('monitorForm.typePrompt')}</h2>
+      <p class="mt-1 text-sm" style="color: rgb(var(--text-muted))">{$t('monitorForm.typePromptDesc')}</p>
     </div>
   <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
     <button
       type="button"
-      class="min-h-24 rounded-xl border p-4 text-left text-sm font-medium transition-colors
-        {tab === 'http' ? 'bg-primary-solid' : 'btn-outline'}"
+      class="monitor-type-option min-h-24 rounded-xl border p-4 text-left text-sm font-medium"
+      class:monitor-type-option-active={tab === 'http'}
       on:click={() => { tab = 'http' }}
-    ><span class="block text-base font-semibold">{$t('monitorForm.httpCheck')}</span><span class="mt-1 block text-xs opacity-80">Endpoints, APIs, and websites</span></button>
+    ><span class="block text-base font-semibold">{$t('monitorForm.httpCheck')}</span><span class="mt-1 block text-xs opacity-80">{$t('monitorForm.httpDesc')}</span></button>
     <button
       type="button"
-      class="min-h-24 rounded-xl border p-4 text-left text-sm font-medium transition-colors
-        {tab === 'heartbeat' ? 'bg-primary-solid' : 'btn-outline'}"
+      class="monitor-type-option min-h-24 rounded-xl border p-4 text-left text-sm font-medium"
+      class:monitor-type-option-active={tab === 'heartbeat'}
       on:click={() => { tab = 'heartbeat' }}
-    ><span class="block text-base font-semibold">{$t('monitorForm.heartbeat')}</span><span class="mt-1 block text-xs opacity-80">Cron jobs and scheduled tasks</span></button>
+    ><span class="block text-base font-semibold">{$t('monitorForm.heartbeat')}</span><span class="mt-1 block text-xs opacity-80">{$t('monitorForm.heartbeatDesc')}</span></button>
     <button
       type="button"
-      class="min-h-24 rounded-xl border p-4 text-left text-sm font-medium transition-colors
-        {tab === 'agent' ? 'bg-primary-solid' : 'btn-outline'}"
+      class="monitor-type-option min-h-24 rounded-xl border p-4 text-left text-sm font-medium"
+      class:monitor-type-option-active={tab === 'agent'}
       on:click={() => { tab = 'agent' }}
-    ><span class="block text-base font-semibold">Agent / Infra</span><span class="mt-1 block text-xs opacity-80">Hosts and resource thresholds</span></button>
+    ><span class="block text-base font-semibold">{$t('monitorForm.agent')}</span><span class="mt-1 block text-xs opacity-80">{$t('monitorForm.agentDesc')}</span></button>
     <button
       type="button"
-      class="min-h-24 rounded-xl border p-4 text-left text-sm font-medium transition-colors
-        {tab === 'dns' ? 'bg-primary-solid' : 'btn-outline'}"
+      class="monitor-type-option min-h-24 rounded-xl border p-4 text-left text-sm font-medium"
+      class:monitor-type-option-active={tab === 'dns'}
       on:click={() => { tab = 'dns' }}
-    ><span class="block text-base font-semibold">{$t('monitorForm.dns')}</span><span class="mt-1 block text-xs opacity-80">DNS records and resolution</span></button>
+    ><span class="block text-base font-semibold">{$t('monitorForm.dns')}</span><span class="mt-1 block text-xs opacity-80">{$t('monitorForm.dnsDesc')}</span></button>
     <button
       type="button"
-      class="min-h-24 rounded-xl border p-4 text-left text-sm font-medium transition-colors
-        {tab === 'ping' ? 'bg-primary-solid' : 'btn-outline'}"
+      class="monitor-type-option min-h-24 rounded-xl border p-4 text-left text-sm font-medium"
+      class:monitor-type-option-active={tab === 'ping'}
       on:click={() => { tab = 'ping' }}
-    ><span class="block text-base font-semibold">{$t('monitorForm.ping')}</span><span class="mt-1 block text-xs opacity-80">Simple reachability checks</span></button>
+    ><span class="block text-base font-semibold">{$t('monitorForm.ping')}</span><span class="mt-1 block text-xs opacity-80">{$t('monitorForm.pingDesc')}</span></button>
   </div>
   </section>
   {/if}
@@ -280,15 +292,15 @@
     </div>
 
     <div class="flex flex-wrap gap-x-6 gap-y-2">
-      <div class="flex items-center gap-2">
+      <div class="flex min-h-11 items-center gap-2">
         <input type="checkbox" id="follow" bind:checked={followRedirects} class="accent-primary" />
         <label for="follow" class="text-sm">{$t('monitorForm.followRedirects')}</label>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex min-h-11 items-center gap-2">
         <input type="checkbox" id="ssl-check" bind:checked={sslCheckEnabled} class="accent-primary" />
         <label for="ssl-check" class="text-sm">{$t('monitorForm.sslCheck')}</label>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex min-h-11 items-center gap-2">
         <input type="checkbox" id="cache-booster" bind:checked={cacheBooster} class="accent-primary" />
         <label for="cache-booster" class="text-sm">{$t('monitorForm.cacheBuster')}</label>
       </div>
@@ -387,19 +399,19 @@
 
   {#if tab === 'agent'}
   <div class="space-y-4 mt-6">
-    <h3 class="text-sm font-semibold text-[rgb(var(--text-muted))] uppercase tracking-wide">Infrastructure Thresholds (Optional)</h3>
+    <h3 class="text-sm font-semibold text-[rgb(var(--text-muted))] uppercase tracking-wide">{$t('monitorForm.infrastructureThresholds')}</h3>
     <div class="grid grid-cols-3 gap-4">
       <div>
-        <label for="cpu-thresh" class="label">CPU Max (%)</label>
-        <input id="cpu-thresh" class="input" type="number" bind:value={cpuThreshold} min="1" max="100" placeholder="e.g. 90" />
+        <label for="cpu-thresh" class="label">{$t('monitorForm.cpuMax')}</label>
+        <input id="cpu-thresh" class="input" type="number" bind:value={cpuThreshold} min="1" max="100" placeholder={$t('monitorForm.thresholdExample')} />
       </div>
       <div>
-        <label for="ram-thresh" class="label">RAM Max (%)</label>
-        <input id="ram-thresh" class="input" type="number" bind:value={ramThreshold} min="1" max="100" placeholder="e.g. 90" />
+        <label for="ram-thresh" class="label">{$t('monitorForm.ramMax')}</label>
+        <input id="ram-thresh" class="input" type="number" bind:value={ramThreshold} min="1" max="100" placeholder={$t('monitorForm.thresholdExample')} />
       </div>
       <div>
-        <label for="disk-thresh" class="label">Disk Max (%)</label>
-        <input id="disk-thresh" class="input" type="number" bind:value={diskThreshold} min="1" max="100" placeholder="e.g. 90" />
+        <label for="disk-thresh" class="label">{$t('monitorForm.diskMax')}</label>
+        <input id="disk-thresh" class="input" type="number" bind:value={diskThreshold} min="1" max="100" placeholder={$t('monitorForm.thresholdExample')} />
       </div>
     </div>
   </div>
@@ -459,14 +471,26 @@
 
   <div class="space-y-3">
     <h3 class="text-sm font-semibold text-[rgb(var(--text-muted))] uppercase tracking-wide">{$t('monitorForm.sectionNotifications')}</h3>
-    {#if allChannels.length === 0}
+    {#if loadingChannels}
+      <p class="text-sm" role="status" aria-live="polite" style="color: rgb(var(--text-muted))">
+        {$t('monitorForm.loadingChannels')}
+      </p>
+    {:else if channelLoadError}
+      <div class="alert items-center text-sm" role="alert"
+        style="background: rgb(var(--warning-bg)); color: var(--warning-fg)">
+        <span class="min-w-0 flex-1">{channelLoadError}</span>
+        <button type="button" class="btn-outline shrink-0 text-inherit" on:click={loadChannels}>
+          {$t('monitorForm.retryChannels')}
+        </button>
+      </div>
+    {:else if allChannels.length === 0}
       <p class="text-sm" style="color: rgb(var(--text-muted))">
         {$t('monitorForm.noChannels')} <a href="/settings" class="underline" style="color: var(--color-primary)">{$t('monitorForm.addOne')}</a>.
       </p>
     {:else}
       <div class="grid grid-cols-2 gap-2">
         {#each allChannels as ch}
-          <label class="flex items-center gap-2 cursor-pointer text-sm p-2 hover:bg-[rgb(var(--bg-subtle))]">
+          <label class="flex min-h-11 items-center gap-2 cursor-pointer text-sm p-2 hover:bg-[rgb(var(--bg-subtle))]">
             <input type="checkbox"
               checked={selectedChannelIds.includes(ch.id)}
               on:change={() => toggleChannel(ch.id)}
@@ -483,29 +507,29 @@
   {#if mode === 'create' && step === 4}
     <section aria-labelledby="monitor-review-title" class="space-y-4">
       <div>
-        <h2 id="monitor-review-title" class="text-lg font-semibold">Review and create</h2>
-        <p class="mt-1 text-sm" style="color: rgb(var(--text-muted))">Confirm the essentials. You can change every setting later.</p>
+        <h2 id="monitor-review-title" class="text-lg font-semibold">{$t('monitorForm.reviewTitle')}</h2>
+        <p class="mt-1 text-sm" style="color: rgb(var(--text-muted))">{$t('monitorForm.reviewDesc')}</p>
       </div>
-      <dl class="card divide-y divide-[rgb(var(--border))] p-0">
+      <dl class="card divide-y p-0" style="border-color: var(--border-color)">
         <div class="grid grid-cols-3 gap-4 p-4">
-          <dt class="text-sm" style="color: rgb(var(--text-muted))">Monitor</dt>
+          <dt class="text-sm" style="color: rgb(var(--text-muted))">{$t('monitorForm.reviewMonitor')}</dt>
           <dd class="col-span-2 text-sm font-semibold">{name}</dd>
         </div>
         <div class="grid grid-cols-3 gap-4 p-4">
-          <dt class="text-sm" style="color: rgb(var(--text-muted))">Type</dt>
+          <dt class="text-sm" style="color: rgb(var(--text-muted))">{$t('monitorForm.reviewType')}</dt>
           <dd class="col-span-2 text-sm font-semibold uppercase">{tab}</dd>
         </div>
         <div class="grid grid-cols-3 gap-4 p-4">
-          <dt class="text-sm" style="color: rgb(var(--text-muted))">Target</dt>
-          <dd class="col-span-2 break-all font-mono text-sm">{tab === 'dns' ? dnsHostname : tab === 'heartbeat' || tab === 'agent' ? `Every ${heartbeatInterval}s` : url}</dd>
+          <dt class="text-sm" style="color: rgb(var(--text-muted))">{$t('monitorForm.reviewTarget')}</dt>
+          <dd class="col-span-2 break-all font-mono text-sm">{tab === 'dns' ? dnsHostname : tab === 'heartbeat' || tab === 'agent' ? $t('monitorForm.reviewHeartbeatTarget', { seconds: heartbeatInterval }) : url}</dd>
         </div>
         <div class="grid grid-cols-3 gap-4 p-4">
-          <dt class="text-sm" style="color: rgb(var(--text-muted))">Schedule</dt>
-          <dd class="col-span-2 text-sm">Check every {interval}s · alert after {toleranceFailures} failed {toleranceFailures === 1 ? 'check' : 'checks'}</dd>
+          <dt class="text-sm" style="color: rgb(var(--text-muted))">{$t('monitorForm.reviewScheduleLabel')}</dt>
+          <dd class="col-span-2 text-sm">{$t('monitorForm.reviewSchedule', { interval, failures: toleranceFailures, unit: toleranceFailures === 1 ? $t('monitorForm.check') : $t('monitorForm.checks') })}</dd>
         </div>
         <div class="grid grid-cols-3 gap-4 p-4">
-          <dt class="text-sm" style="color: rgb(var(--text-muted))">Notifications</dt>
-          <dd class="col-span-2 text-sm">{selectedChannelIds.length ? `${selectedChannelIds.length} ${selectedChannelIds.length === 1 ? 'channel' : 'channels'}` : 'No channel selected'}</dd>
+          <dt class="text-sm" style="color: rgb(var(--text-muted))">{$t('monitorForm.reviewNotifications')}</dt>
+          <dd class="col-span-2 text-sm">{selectedChannelIds.length ? $t('monitorForm.channelCount', { count: selectedChannelIds.length, unit: selectedChannelIds.length === 1 ? $t('monitorForm.channel') : $t('monitorForm.channels') }) : $t('monitorForm.noChannelSelected')}</dd>
         </div>
       </dl>
     </section>
@@ -522,10 +546,10 @@
       </button>
     {:else}
       {#if step > 1}
-        <button type="button" class="btn-outline" on:click={() => step -= 1}>Back</button>
+        <button type="button" class="btn-outline" on:click={() => step -= 1}>{$t('monitorForm.back')}</button>
       {/if}
       {#if step < 4}
-        <button type="button" class="btn-primary" on:click={nextStep}>Continue</button>
+        <button type="button" class="btn-primary" on:click={nextStep}>{$t('monitorForm.continue')}</button>
       {:else}
         <button type="submit" class="btn-primary" disabled={saving}>
           {saving ? $t('monitorForm.saving') : $t('monitorForm.createMonitor')}
@@ -535,3 +559,25 @@
     <button type="button" class="btn-outline ml-auto" on:click={() => dispatch('cancel')}>{$t('monitorForm.cancel')}</button>
   </div>
 </form>
+
+<style>
+  .monitor-type-option {
+    display: block;
+    width: 100%;
+    background: rgb(var(--card));
+    color: rgb(var(--text));
+    transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+  }
+
+  .monitor-type-option:hover {
+    background: rgb(var(--bg-subtle));
+    border-color: color-mix(in srgb, var(--color-primary) 38%, var(--border-color));
+  }
+
+  .monitor-type-option-active,
+  .monitor-type-option-active:hover {
+    background: var(--color-primary-solid);
+    border-color: var(--color-primary-solid);
+    color: white;
+  }
+</style>

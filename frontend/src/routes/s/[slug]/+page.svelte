@@ -100,10 +100,10 @@
 
   function uptimeColor(uptime: number | null): string {
     if (uptime === null) return 'rgb(var(--text-muted))'
-    if (uptime >= 99) return '#22c55e'
-    if (uptime >= 95) return '#4ade80'
-    if (uptime >= 80) return '#facc15'
-    return '#ef4444'
+    if (uptime >= 99) return 'var(--success-fg)'
+    if (uptime >= 95) return 'var(--success-fg)'
+    if (uptime >= 80) return 'var(--warning-fg)'
+    return 'var(--danger-fg)'
   }
 
   function barColor(uptime: number | null): string {
@@ -122,7 +122,7 @@
   }
 
   function statusAccentColor(s: string): string {
-    return ({ up: '#22c55e', down: '#ef4444', pending: 'var(--color-primary)' } as Record<string,string>)[s] ?? '#22c55e'
+    return ({ up: 'var(--success-fg)', down: 'var(--danger-fg)', pending: 'var(--color-primary)' } as Record<string,string>)[s] ?? 'var(--success-fg)'
   }
 
   function incidentBadgeCls(s: IncidentStatus): string {
@@ -157,7 +157,7 @@
   <header style="background-color: rgb(var(--bg-subtle)); border-bottom: 2px solid {data?.page.brandColor ?? 'var(--border-color)'}">
     <div class="max-w-5xl mx-auto flex items-center h-14 px-4 gap-3">
       <a href="/" aria-label={data?.page.name ?? 'Pingflare'} class="shrink-0 mr-1">
-        <img src={data?.page.logoUrl ?? '/logo.png'} alt="" class="h-7 max-w-32 object-contain" />
+        <img src={data?.page.logoUrl ?? '/logo-64.webp'} alt="" class="h-7 max-w-32 object-contain" />
       </a>
       <span class="text-sm font-medium truncate flex-1" style="color: rgb(var(--text))">{data?.page.name ?? 'Pingflare'}</span>
       <div class="flex items-center gap-1 shrink-0">
@@ -195,19 +195,19 @@
           <div class="mb-3">
             {#if overallStatus === 'operational'}
               <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium"
-                style="background: rgb(34 197 94 / .1); color: #22c55e; border: 1px solid rgb(34 197 94 / .2)">
+                style="background: rgb(var(--success-bg)); color: var(--success-fg); border: 1px solid color-mix(in srgb, var(--success-fg) 24%, transparent)">
                 <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                 {$t('pub.allOperational')}
               </span>
             {:else if overallStatus === 'outage'}
               <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium"
-                style="background: rgb(239 68 68 / .1); color: #ef4444; border: 1px solid rgb(239 68 68 / .2)">
+                style="background: rgb(var(--danger-bg)); color: var(--danger-fg); border: 1px solid color-mix(in srgb, var(--danger-fg) 24%, transparent)">
                 <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
                 {$t('pub.outage')}
               </span>
             {:else if overallStatus === 'degraded'}
               <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium"
-                style="background: rgb(249 115 22 / .1); color: #f97316; border: 1px solid rgb(249 115 22 / .2)">
+                style="background: rgb(var(--warning-bg)); color: var(--warning-fg); border: 1px solid color-mix(in srgb, var(--warning-fg) 24%, transparent)">
                 <span class="w-2 h-2 rounded-full bg-orange-400 animate-pulse"></span>
                 {$t('pub.degraded')}
               </span>
@@ -243,7 +243,7 @@
       <div class="rounded p-8 max-w-sm mx-auto text-center space-y-4"
         style="background-color: rgb(var(--card)); border: 1px solid var(--border-color)">
         <div class="w-10 h-10 rounded-full flex items-center justify-center mx-auto"
-          style="background: rgb(249 115 22 / .1); color: var(--color-primary)">
+          style="background: rgb(var(--warning-bg)); color: var(--warning-fg)">
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/>
           </svg>
@@ -252,7 +252,8 @@
           <p class="text-xs text-red-400">{$t('pub.wrongPassword')}</p>
         {/if}
         <form on:submit|preventDefault={submitPassword} class="space-y-3">
-          <input type="password" bind:value={password} placeholder={$t('pub.enterPassword')} required class="input" />
+          <label class="sr-only" for="status-page-password">{$t('pub.enterPassword')}</label>
+          <input id="status-page-password" type="password" bind:value={password} placeholder={$t('pub.enterPassword')} required class="input" />
           <button type="submit" class="btn-primary w-full">
             {loading ? $t('pub.checking') : $t('pub.accessPage')}
           </button>
@@ -261,8 +262,8 @@
     {/if}
 
     {#if error}
-      <div class="flex items-center gap-2 px-4 py-3 rounded text-sm"
-        style="background: rgb(239 68 68 / .08); color: #ef4444; border: 1px solid rgb(239 68 68 / .3)">
+      <div class="flex items-center gap-2 px-4 py-3 rounded text-sm" role="alert"
+        style="background: rgb(var(--danger-bg)); color: var(--danger-fg); border: 1px solid color-mix(in srgb, var(--danger-fg) 30%, transparent)">
         <Icon name="exclamation-triangle" size={14} />{error}
       </div>
     {/if}
@@ -273,7 +274,7 @@
         <section class="space-y-3">
           <h2 class="section-title">{$t('pub.activeIncidents')}</h2>
           {#each activeIncidents as inc}
-            <div class="card space-y-3" style="border-color: rgb(239 68 68 / .35)">
+            <div class="card space-y-3" style="border-color: color-mix(in srgb, var(--danger-fg) 35%, var(--border-color))">
               <div class="flex items-start gap-3">
                 <div class="flex-1">
                   <div class="flex items-center gap-2 flex-wrap">
