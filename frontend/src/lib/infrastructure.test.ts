@@ -1,6 +1,6 @@
 /// <reference types="vitest/globals" />
 
-import { describeInfrastructureSignal } from './infrastructure.js'
+import { describeInfrastructureSignal } from './infrastructure.ts'
 
 describe('infrastructure signal descriptions', () => {
   it('describes resource pressure with the observed value and configured threshold', () => {
