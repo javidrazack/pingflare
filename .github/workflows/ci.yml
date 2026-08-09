@@ -40,8 +40,20 @@ jobs:
         env:
           WRANGLER_LOG_PATH: /tmp/pingflare-wrangler-migrations.log
 
-      - name: 🧪 Run tests
-        run: npm test -- --reporter=github-actions
+      - name: 🧪 Test alerting and scheduling
+        run: npx vitest run src/test/alertManager.test.ts src/test/checkStorage.test.ts src/test/cron.test.ts src/test/cronQueryBudget.test.ts
+
+      - name: 🧪 Test API and infrastructure routes
+        if: always()
+        run: npx vitest run src/test/backup.test.ts src/test/history.test.ts src/test/infrastructure.test.ts src/test/monitorSecurity.test.ts src/test/notifications.test.ts src/test/publicStatus.test.ts src/test/setBasedRoutes.test.ts
+
+      - name: 🧪 Test migrations and agent installer
+        if: always()
+        run: npx vitest run src/test/agentInstaller.test.ts src/test/legacyMigrationReconcile.test.ts src/test/migrations.test.ts
+
+      - name: 🧪 Test focused units
+        if: always()
+        run: npx vitest run src/test/agentStatus.test.ts src/test/analyticsEngine.test.ts src/test/dns.test.ts src/test/http.test.ts src/test/index.test.ts src/test/infrastructureUi.test.ts src/test/ping.test.ts src/test/responseCache.test.ts
 
       - name: 🛡️ Audit backend dependencies
         run: npm audit --audit-level=high
