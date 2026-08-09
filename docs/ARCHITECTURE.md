@@ -10,7 +10,8 @@ Pingflare separates authoritative operational state from high-volume telemetry a
 | Alert state, incidents, notification configuration and delivery outbox | D1 | SQLite |
 | Exact current UTC-day counters | D1 `monitors` row | SQLite `monitors` row |
 | Exact completed daily history | D1 `monitor_daily_rollups` | SQLite `monitor_daily_rollups` |
-| High-resolution check and agent telemetry | Analytics Engine | Not exported; exact counters remain local |
+| Investigable 30-day agent CPU/RAM/disk history | D1 `agent_metric_samples` | SQLite `agent_metric_samples` |
+| Best-effort high-resolution check and agent telemetry | Analytics Engine | Not exported; exact counters and sampled agent history remain local |
 | Transition/error evidence | Sparse D1 `status_logs` | Sparse SQLite `status_logs` |
 | Completed historical aggregate cache | Cloudflare Cache API | Bounded process-local cache |
 
@@ -53,7 +54,7 @@ flowchart LR
     Checks --> Persist
     Push --> Persist
     Agent --> Persist
-    Persist -->|"current state, counters, evidence"| D1
+    Persist -->|"current state, counters, evidence,<br/>five-minute agent samples"| D1
     Persist -.->|"one privacy-bounded point"| AE
     Persist --> Alert
     Alert -->|"incident truth + delivery event"| D1
@@ -97,6 +98,19 @@ The `/api/monitors/:id/analytics` endpoint replaces four independent uptime requ
 Full responses containing current status, logs, or incidents always return `Cache-Control: no-store`. Cache API stores only completed aggregate fragments, so a hit cannot make current status stale.
 
 Cache keys include monitor IDs, per-monitor history revisions, and the requested range. Statistics reset and backup restore advance the revision. Cloudflare Cache API is data-center-local, so every region can fill independently without affecting correctness.
+
+Agent history follows a separate, authenticated D1 read path. The
+`/api/monitors/:id/metric-history` endpoint validates that the monitor is an
+agent, reads only its requested 2-hour to 30-day window, and performs bounded
+SQL aggregation. It returns five-minute buckets for `2h` and `24h`, 30-minute
+buckets for `7d`, and two-hour buckets for `30d`. The dashboard calls it only
+when the agent's **Performance** tab is open; the fleet overview returns current
+metrics only.
+
+The authenticated `/api/infrastructure/overview` endpoint is available in both
+the Worker and Docker runtimes. It returns bounded current node state plus a
+structured strongest signal; full container inventories remain confined to the
+individual monitor response.
 
 ## Failure behavior
 

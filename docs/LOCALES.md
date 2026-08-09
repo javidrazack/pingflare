@@ -1,6 +1,10 @@
-# Adding a New Language
+# Locales
 
 If you speak a language that isn't listed below, contributions are very welcome!
+
+Pingflare currently localizes dashboard navigation, forms, state labels,
+validation feedback, relative times, and outgoing notification messages. A
+formal accessibility-conformance level is not claimed by this document.
 
 ## Supported languages
 
@@ -50,7 +54,16 @@ const translations = {
 }
 ```
 
-### 4. Open a PR
+### 4. Validate
+
+Run the normal frontend checks and compare the locale keys before opening a PR:
+
+```bash
+npm run typecheck
+node -e "const fs=require('node:fs');const en=JSON.parse(fs.readFileSync('locales/en.json'));const file=JSON.parse(fs.readFileSync('locales/<code>.json'));const missing=Object.keys(en).filter(k=>!(k in file));const extra=Object.keys(file).filter(k=>!(k in en));if(missing.length||extra.length){console.error({missing,extra});process.exit(1)}"
+```
+
+### 5. Open a PR
 
 - `locales/<code>.json` — your translation file
 - Updated `frontend/src/lib/i18n.ts` registration

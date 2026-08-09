@@ -2,7 +2,7 @@
 
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![SvelteKit](https://img.shields.io/badge/SvelteKit-2.x-FF3E00?logo=svelte&logoColor=white)](https://kit.svelte.dev/)
 [![D1 Database](https://img.shields.io/badge/Cloudflare-D1-F38020?logo=cloudflare&logoColor=white)](https://developers.cloudflare.com/d1/)
 [![Analytics Engine](https://img.shields.io/badge/Cloudflare-Analytics%20Engine-F38020?logo=cloudflare&logoColor=white)](https://developers.cloudflare.com/analytics/analytics-engine/)
@@ -10,23 +10,24 @@
 
 https://github.com/user-attachments/assets/c33e20fd-6a82-4e57-b95a-ec06bbf701f5
 
-Pingflare is a self-hosted uptime and infrastructure monitor for HTTP, DNS, TCP ports, heartbeats, and Linux/Docker hosts. It runs on Cloudflare Workers with D1, Analytics Engine, and Cache API, or on a Docker host with SQLite.
+Pingflare is a self-hosted uptime and infrastructure monitor for HTTP, DNS, TCP ports, push heartbeats, and Linux servers. Docker discovery is optional: ordinary servers can report CPU, RAM, and disk health without running containers. Pingflare runs on Cloudflare Workers with D1, Analytics Engine, and Cache API, or on a Docker host with SQLite.
 
 Alerts are supported through Discord, Slack, Telegram, Email, ntfy, Pushover, generic webhooks, Apprise, Google Chat, Microsoft Teams, Matrix, PagerDuty, and Twilio.
 
 ## What is included
 
-- HTTP monitoring with status, latency, body, keyword, and JSONPath assertions
-- DNS-over-HTTPS and TCP port checks
-- Push heartbeats for jobs and services
-- A lightweight Linux infrastructure agent for CPU, RAM, disk, and Docker health
-- Failure tolerances, reminders, maintenance windows, and surge protection
-- Searchable monitoring dashboard, charts, bulk actions, and incident management
-- Branded public status pages with optional password protection
-- Durable alert delivery through a deduplicated D1/SQLite outbox
-- Exact daily uptime counters plus sparse diagnostic evidence
-- High-resolution, best-effort Analytics Engine telemetry on Cloudflare
-- Safe historical caching that never serves cached current status
+| Area | Current functionality |
+|---|---|
+| External monitoring | HTTP methods, expected status, redirects, request headers/body, basic/digest/bearer auth, JSONPath assertions, SSL state, DNS-over-HTTPS, and Worker-compatible port reachability |
+| Push monitoring | Tokenized heartbeats for jobs and services, plus a lightweight Linux agent for CPU, RAM, disk, freshness, thresholds, and optional Docker health |
+| Investigation | Exact uptime and response-time history, sparse diagnostic logs, detected downtime incidents, and lazy-loaded 2-hour to 30-day agent resource charts |
+| Operations | Search, filters, pagination, bulk pause/resume/delete, manual check runs, maintenance windows, failure tolerances, reminders, and surge protection |
+| Communication | Thirteen notification providers, durable deduplicated delivery, draft/published incident reports, and branded or password-protected public status pages |
+| Administration | Encrypted credentials, localized dashboard, versioned configuration backup/restore, configurable diagnostic retention, and Free-plan safety budgets |
+
+For a feature-by-feature description of the dashboard, monitor types, history,
+alerts, status pages, and platform differences, see the
+[current feature reference](docs/FEATURES.md).
 
 ## Architecture at a glance
 
@@ -38,7 +39,7 @@ See the validated [data-flow diagram and detailed architecture](docs/ARCHITECTUR
 
 ## Capacity on the Cloudflare Free plan
 
-The figures below were verified on **July 30, 2026**. Cloudflare can change plan limits, so its linked documentation is the source of truth.
+The figures below were verified on **August 9, 2026**. Cloudflare can change plan limits, so its linked documentation is the source of truth.
 
 | Service | Included Free-plan capacity relevant to Pingflare |
 |---|---|
@@ -140,7 +141,7 @@ npm run deploy
 
 Create a D1 database named `pingflare` first and put its ID in `wrangler.toml`. `npm run deploy` builds the application, reconciles a complete legacy v1.6 migration ledger when necessary, preflights pending migration/index work, applies migrations through the `DB` binding, and deploys only after success.
 
-Existing installations apply migrations `0005`–`0010`, which add compact rollups, indexed scheduling, the durable notification outbox, single-open-incident enforcement, the public-read budget, and bounded incident access paths. A partial legacy schema or a migration estimate above 40,000 writes stops without mutation.
+Existing installations apply migrations `0005`–`0011`, which add compact rollups, indexed scheduling, the durable notification outbox, single-open-incident enforcement, the public-read budget, bounded incident access paths, and 30-day agent resource history. A partial legacy schema or a migration estimate above 40,000 writes stops without mutation.
 
 > Existing Workers Builds projects must use `npm run deploy`. A saved `npx wrangler deploy` command bypasses D1 migrations and is unsafe for schema-dependent upgrades.
 
@@ -192,9 +193,11 @@ curl -fsSL https://your-pingflare.example/api/agent/install/YOUR_TOKEN | sudo ba
 The installer sends and verifies an initial heartbeat, then configures a one-minute systemd timer or root-crontab fallback. The URL and installed script contain the agent token; treat them as credentials. See the [agent guide](docs/AGENT.md) for requirements and behavior.
 
 The **Infrastructure** page shows node health, resource pressure, telemetry
-freshness, and at most five priority issues. It is intentionally container-free;
+freshness, and at most five priority issues with the exact strongest signal for
+each node. It does not require containers;
 Docker details appear only on an individual monitor when a host actually
-reports containers.
+reports them. CPU, RAM, and disk history is loaded only when the monitor's
+**Performance** tab is opened.
 
 ## Development and validation
 
@@ -210,6 +213,7 @@ For local setup and platform-specific commands, see [local development](docs/LOC
 ## Documentation
 
 - [Architecture and data flow](docs/ARCHITECTURE.md)
+- [Current features and product behavior](docs/FEATURES.md)
 - [Analytics Engine](docs/ANALYTICS.md)
 - [Infrastructure agent](docs/AGENT.md)
 - [API](docs/API.md)

@@ -7,7 +7,10 @@ Pingflare writes telemetry to two Workers Analytics Engine datasets:
 
 Before the first deployment, enable Analytics Engine once under **Workers & Pages → Analytics Engine** in the Cloudflare dashboard. The datasets themselves require no manual provisioning: their `wrangler.toml` bindings create them on first use after the account feature is enabled.
 
-The application UI does not query Analytics Engine. Exact uptime comes from D1 daily rollups. This avoids storing a Cloudflare Account Analytics token in the Worker and avoids treating sampled telemetry as authoritative.
+The application UI does not query Analytics Engine. Exact uptime comes from D1
+daily rollups, while investigable 30-day CPU/RAM/disk history comes from bounded
+D1 `agent_metric_samples`. This avoids storing a Cloudflare Account Analytics
+token in the Worker and avoids treating sampled telemetry as authoritative.
 
 ## Check event schema
 

@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Added
+- A fleet-level Infrastructure dashboard with current agent health, CPU/RAM/disk pressure, freshness, bounded priority issues, and exact strongest-signal explanations
+- On-demand CPU, RAM, and disk history for agent monitors across 2-hour, 24-hour, 7-day, and 30-day ranges
+- Persisted notification test history and guided configuration for all supported providers
+
+### Improved
+- Docker is optional throughout agent setup and infrastructure triage; ordinary Linux hosts remain first-class monitored nodes
+- Dashboard hierarchy, responsive layouts, keyboard behavior, focus treatment, reduced-motion support, feedback, and empty/error states were polished across authenticated and public views
+- Infrastructure APIs now expose the same route set in Cloudflare Worker and Docker/SQLite deployments
+
+### Documentation
+- Refreshed the README, feature reference, API, architecture, Analytics Engine, infrastructure-agent, localization, product, and local-development guides against the current implementation
+- Replaced completed implementation plans with archived records and updated the Checkmate comparison to distinguish current parity from deliberate platform limits
+
+### Upgrade notes
+- Apply migration `0011_agent_metric_samples.sql` before deploying code that reads agent resource history; `npm run deploy` performs this step automatically for Cloudflare deployments
+
 ## [1.7.0] - 2026-07-28
 
 ### Added

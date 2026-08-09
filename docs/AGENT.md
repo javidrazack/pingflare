@@ -4,19 +4,43 @@ Pingflare provides a simple bash agent for infrastructure servers, inspired by
 Checkmate's Capture agent. Docker is optional; hosts without Docker report an
 empty container list and the infrastructure dashboard remains node-focused.
 
-## What it Monitors
+## What it monitors
+
 The agent runs every minute and collects:
+
 1. **CPU Usage**: Calculated from the change in `/proc/stat` counters since the previous heartbeat. This represents average CPU utilization over the heartbeat interval; the first run after installation or reboot uses a one-second sample to seed the counters.
 2. **RAM Usage**: Calculated from `/proc/meminfo`.
 3. **Disk Usage**: Extracted via `df` (checks the root `/` mount).
-4. **Docker Containers**: Extracts running and stopped container statuses via `docker ps -a` and `jq`.
+4. **Docker Containers (optional)**: When Docker is installed and accessible, extracts running, stopped, and unhealthy container states via `docker ps -a` and `jq`.
 
 It pushes these metrics to your Pingflare instance via `POST /api/agent/push/:token`.
 
 The latest CPU, RAM, and disk values appear on the Infrastructure page.
-CPU/RAM history is fetched only when the monitor's Performance tab is opened.
+CPU, RAM, and disk history is fetched only when the monitor's Performance tab is opened.
 Pingflare keeps one regular five-minute sample plus rare transition samples for
 30 days; it does not store per-minute server metrics or host logs.
+
+## Dashboard behavior
+
+The fleet-level **Infrastructure** page is optimized for triage:
+
+- Reporting nodes, resource-pressure count, and stale-telemetry count
+- Current CPU, RAM, disk, state, and last-report time for up to 200 agents
+- A top-five list of nodes needing attention
+- `healthy`, `warning`, `critical`, `stale`, `pending`, and `paused` states
+
+A metric enters the warning state at 80% of its configured threshold and the
+critical state after crossing the threshold. Staleness is based on the expected
+report interval and grace period, with a minimum three-minute window.
+Each node also reports a structured strongest signal: the most urgent resource
+threshold, stale cutoff, Docker failure, health-check failure, or lifecycle
+state. This is the exact reason displayed in the priority list and fleet table.
+
+Open an individual node for deeper investigation. Its **Performance** tab loads
+historical `2h`, `24h`, `7d`, or `30d` CPU/RAM/disk data only on demand. The
+short ranges use five-minute buckets; `7d` uses 30-minute buckets; `30d` uses
+two-hour buckets. Container details appear on the node overview only when the
+agent actually reports containers.
 
 ## Reporting cadence and Free-plan sizing
 
@@ -37,7 +61,7 @@ leaving headroom inside D1's 100,000-row Free allowance.
 
 1. Open your Pingflare dashboard.
 2. Click **Create Monitor** and select the **Agent / Infra** tab.
-3. Configure the maximum thresholds (e.g., maximum CPU, RAM, or Disk). If any threshold is breached, any container is not running, or a running container is unhealthy, the monitor will trigger a downtime incident and send alerts.
+3. Configure optional maximum CPU, RAM, or disk thresholds. If a threshold is breached, a reported container is not running, or a running container is unhealthy, the monitor triggers a downtime incident and alert workflow.
 4. Save the monitor.
 5. In the monitor details page, you will see an **Agent Installation** command block.
 6. Copy the command and paste it into the terminal of a sudo-capable user on the server you wish to monitor:
@@ -58,5 +82,9 @@ The agent keeps only its last CPU counters in `/run/pingflare-agent/cpu.state`. 
 
 The generated installation URL contains the agent token. Treat the URL and installed script as credentials and do not publish them.
 
-## Log Aggregation
-Please note that Pingflare is designed to run entirely on the Cloudflare Free Tier. As such, aggregating and storing heavy server logs is not natively supported by the agent, as high log volumes would instantly exhaust Cloudflare D1's 100,000 writes/day free limit. The agent strictly focuses on periodic health metrics to keep your infrastructure running smoothly without incurring costs.
+## Log aggregation
+
+The agent does not collect or store host logs. Pingflare is designed to remain
+within Cloudflare Free-plan limits, and high-volume logs would consume D1's
+daily write allowance quickly. The agent intentionally sends only bounded
+periodic health snapshots.

@@ -48,7 +48,7 @@ Deployment and maintenance happen through Cloudflare Workers tooling or Docker/V
 ## Brand Commitments
 
 - The product name is **Pingflare**.
-- The existing Pingflare logo at `static/logo.png` is a committed product asset.
+- The Pingflare logo assets under `static/` are committed product assets.
 - Product language should be operationally precise and should not make the interface appear more certain, current, or reliable than the underlying data.
 - The product is self-hosted and MIT-licensed; future work must not imply a hosted commercial service unless that product direction is explicitly introduced.
 - English and Brazilian Portuguese are currently supported interface locales.
@@ -59,7 +59,7 @@ Deployment and maintenance happen through Cloudflare Workers tooling or Docker/V
 - `docs/FEATURES.md` documents current product behavior across monitoring, history, alerts, status pages, and platform differences.
 - `docs/ARCHITECTURE.md` documents the validated data flow and reliability model.
 - `docs/ANALYTICS.md`, `docs/API.md`, `docs/AGENT.md`, `docs/LOCALES.md`, and `docs/LOCAL_DEVELOPMENT.md` provide supporting technical and operating evidence.
-- The implemented frontend routes, API types, locale files, and `static/logo.png` provide working product and brand evidence.
+- The implemented frontend routes, API types, locale files, and logo assets under `static/` provide working product and brand evidence.
 - The repository contains a linked product demonstration asset in the root `README.md`.
 - No testimonials, customer logos, adoption metrics, case studies, press coverage, pricing, or commercial-service claims are confirmed. Future work must not fabricate them.
 
@@ -73,4 +73,7 @@ Deployment and maintenance happen through Cloudflare Workers tooling or Docker/V
 
 ## Accessibility & Inclusion
 
-No product-specific accessibility standard has been confirmed yet. This remains an open decision; future work should not claim formal conformance without evidence.
+The interface implements keyboard, focus, contrast, reduced-motion, and
+responsive accessibility practices where documented in `DESIGN.md`. No formal
+WCAG conformance audit has been completed, so future work must not claim a
+conformance level without evidence.
