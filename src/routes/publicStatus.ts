@@ -1,3 +1,4 @@
+import { displayStatus } from '../services/monitor-freshness'
 import { Hono, type Context } from 'hono'
 import { eq, desc, and, gte, sql } from 'drizzle-orm'
 import { getDb, statusPages, statusPageMonitors, monitors, statusLogs, incidents, incidentReports, incidentUpdates, incidentMonitors } from '../db'
@@ -301,7 +302,8 @@ router.get('/:slug', async (c) => {
     return {
       id: m.id,
       name: m.name,
-      status: m.lastStatus,
+      status: displayStatus(m),
+      lastCheckedAt: m.lastCheckedAt,
       uptime90d: analytics?.uptimes['90'] ?? null,
       daily: analytics?.daily ?? [],
     }
@@ -476,7 +478,7 @@ router.get('/:slug/monitors/:monitorId', async (c) => {
     type: monitor.type,
     url: monitor.url,
     tags: monitor.tags,
-    lastStatus: monitor.lastStatus,
+    lastStatus: displayStatus(monitor),
     lastCheckedAt: monitor.lastCheckedAt,
     uptime1: analytics?.uptimes['1'] ?? null,
     uptime7: analytics?.uptimes['7'] ?? null,

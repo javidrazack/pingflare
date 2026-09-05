@@ -141,7 +141,7 @@ npm run deploy
 
 Create a D1 database named `pingflare` first and put its ID in `wrangler.toml`. `npm run deploy` builds the application, reconciles a complete legacy v1.6 migration ledger when necessary, preflights pending migration/index work, applies migrations through the `DB` binding, and deploys only after success.
 
-Existing installations apply migrations `0005`–`0011`, which add compact rollups, indexed scheduling, the durable notification outbox, single-open-incident enforcement, the public-read budget, bounded incident access paths, and 30-day agent resource history. A partial legacy schema or a migration estimate above 40,000 writes stops without mutation.
+Existing installations apply migrations `0005`–`0012`, which add compact rollups, indexed scheduling, the durable notification outbox, single-open-incident enforcement, the public-read budget, bounded incident access paths, 30-day agent resource history, session revocation, bounded delivery receipts, and scheduler completion metadata. Existing administrator sessions require sign-in after migration 0012. See [operational controls](docs/OPERATIONS.md). A partial legacy schema or a migration estimate above 40,000 writes stops without mutation.
 
 > Existing Workers Builds projects must use `npm run deploy`. A saved `npx wrangler deploy` command bypasses D1 migrations and is unsafe for schema-dependent upgrades.
 

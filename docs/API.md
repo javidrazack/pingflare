@@ -9,8 +9,9 @@ Obtain a token by calling `POST /api/auth/login`.
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/api/auth/login` | Returns a JWT token valid for 30 days |
-| POST | `/api/auth/refresh` | Exchanges a valid token for a new one with a fresh 30-day expiry |
+| POST | `/api/auth/login` | Returns a JWT with a 24-hour absolute expiry |
+| POST | `/api/auth/refresh` | Validates and returns the same token without extending expiry |
+| POST | `/api/auth/logout` | Revokes the current administrator token |
 
 ---
 
@@ -273,3 +274,24 @@ pages, their relationships, and maintenance windows. It excludes uptime
 history, diagnostic logs, detected incidents, delivery state, and agent metric
 samples. Restore accepts at most 512 KB and 5,000 records, regenerates
 heartbeat/agent tokens, and resets restored monitors to `pending`.
+
+## Operational controls
+
+All routes below require administrator authentication and return uncached data.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/operations` | Capacity, overdue checks, scheduler completion and public-read reservation |
+| GET | `/api/operations/dashboard` | Counts plus at most 20 compact attention items |
+| GET | `/api/operations/watchlist` | Five lowest 30-day uptime entries among fresh, active, healthy monitors |
+| GET | `/api/operations/deliveries` | First 50 pending deliveries and latest 50 acceptance receipts |
+| POST | `/api/operations/deliveries/:id/retry` | Make unclaimed work eligible for the next drain |
+
+Maintenance POST accepts `startAt`, `endAt`, optional `reason`, and optional
+`occurrences: [{ startAt, endAt }]`, all timestamps in Unix seconds. Repeats are
+explicit finite occurrences, not a background recurrence rule. See
+[operational controls](OPERATIONS.md) for bounds and upgrade behavior.
+
+Monitor responses include `displayStatus` (`up`, `down`, `pending`, `stale`,
+`paused`) while preserving the recorded `lastStatus`. Public status responses
+use that effective state in `status` (or `lastStatus` on monitor detail).

@@ -1,3 +1,4 @@
+import operationsRoutes from './routes/operations'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import authRoutes from './routes/auth'
@@ -82,17 +83,18 @@ app.route('/api/incidents', incidentReportsRoutes)
 app.route('/api/backup', backupRoutes)
 app.route('/api/events', eventsRoutes)
 app.route('/api/infrastructure', infrastructureRoutes)
+app.route('/api/operations', operationsRoutes)
 
 app.get('/api/health', (c) => c.json({ ok: true, ts: Date.now() }))
 
 app.post('/api/cron/run', requireAuth, async (c) => {
-  const result = await runCron(c.env)
+  const result = await runCron(c.env, 1)
   return c.json({ ok: true, triggeredAt: Date.now(), ...result })
 })
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(runCron(env))
   },
-}
+} satisfies ExportedHandler<Env>

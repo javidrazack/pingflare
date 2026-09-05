@@ -27,7 +27,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(`${BASE}${path}`, { ...init, headers })
+  const timeout = AbortSignal.timeout(path === '/cron/run' ? 180_000 : 30_000)
+  const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout
+  const res = await fetch(`${BASE}${path}`, { ...init, headers, signal })
 
   if (res.status === 401 && path !== '/auth/login') {
     localStorage.removeItem('token')
@@ -46,7 +48,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  operations: {
+    dashboard: () => request<{ summary: { total: number; up: number; down: number; pending: number; stale: number }; items: MonitorSummary[] }>('/operations/dashboard'),
+    watchlist: () => request<{ items: Array<MonitorSummary & { uptime: number | null }> }>('/operations/watchlist'),
+    overview: () => request<OperationsOverview>('/operations'),
+    deliveries: () => request<DeliveryInbox>('/operations/deliveries'),
+    retry: (id: string) => request<{ ok: boolean; changed: boolean }>(`/operations/deliveries/${id}/retry`, { method: 'POST' }),
+  },
   auth: {
+    logout: () => request<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
     login: (username: string, password: string) =>
       request<{ token: string }>('/auth/login', {
         method: 'POST',
@@ -55,6 +65,10 @@ export const api = {
   },
 
   monitors: {
+    maintenance: (id: string) => request<MaintenanceWindow[]>(`/monitors/${id}/maintenance`),
+    scheduleMaintenance: (id: string, data: { startAt: number; endAt: number; reason: string; occurrences: Array<{ startAt: number; endAt: number }> }) =>
+      request<{ ok: boolean }>(`/monitors/${id}/maintenance`, { method: 'POST', body: JSON.stringify(data) }),
+    deleteMaintenance: (id: string, windowId: string) => request<{ ok: boolean }>(`/monitors/${id}/maintenance/${windowId}`, { method: 'DELETE' }),
     list:   () => request<Monitor[]>('/monitors'),
     search: (params: MonitorSearchParams) => {
       const query = new URLSearchParams()
@@ -152,6 +166,7 @@ export interface Monitor {
   interval: number
   active: boolean
   lastCheckedAt: number | null
+  displayStatus?: DisplayStatus
   lastStatus: 'up' | 'down' | 'pending'
   reminderIntervalHours: number | null
   toleranceFailures: number
@@ -386,7 +401,7 @@ export interface IncidentUpdate {
 export interface PublicMonitorStatus {
   id: string
   name: string
-  status: 'up' | 'down' | 'pending'
+  status: DisplayStatus
   uptime90d: number | null
   daily: DailyUptime[]
 }
@@ -446,3 +461,22 @@ export interface BackupData {
     reason: string | null
   }>
 }
+
+export type DisplayStatus = 'up' | 'down' | 'pending' | 'stale' | 'paused'
+export interface MaintenanceWindow { id: string; monitorId: string; startAt: number; endAt: number; reason: string | null }
+export interface OperationsOverview {
+  total: number; active: number; overdue: number; observedAt: number
+  oldestOverdueSeconds: number | null; scheduledPerMinute: number; inboundPerMinute: number
+  normalChecksPerMinute: number; conservativeChecksPerMinute: number
+  scheduler: { lastCompletedAt: number | null; failed: boolean; running: boolean; stale: boolean }
+  publicReadReservation: { used: number; limit: number }
+}
+export interface DeliveryInbox {
+  pending: Array<{ id: string; monitorName: string; eventType: string; createdAt: number;
+    nextAttemptAt: number; attempts: number; deliveredCount: number; failed: number;
+    claimUntil: number | null; channels: string | null }>
+  hasMore: boolean
+  receipts: Array<{ id: number; monitorName: string; channelName: string; eventType: string; deliveredAt: number }>
+}
+
+export type MonitorSummary = Pick<Monitor, 'id' | 'name' | 'type' | 'tags' | 'url' | 'interval' | 'active' | 'lastCheckedAt' | 'lastStatus' | 'displayStatus'>

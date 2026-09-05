@@ -1,5 +1,5 @@
 <script lang="ts">
-  export let status: 'up' | 'down' | 'pending' = 'up'
+  export let status: import('$lib/api').DisplayStatus = 'up'
   $: color = status === 'up' ? 'var(--success-fg)' : status === 'down' ? 'var(--danger-fg)' : 'var(--warning-fg)'
 </script>
 

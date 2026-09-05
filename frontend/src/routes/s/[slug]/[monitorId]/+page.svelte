@@ -20,7 +20,7 @@
     type: 'http' | 'heartbeat' | 'agent' | 'dns' | 'ping'
     url: string | null
     tags: string
-    lastStatus: 'up' | 'down' | 'pending'
+    lastStatus: import('$lib/api').DisplayStatus
     lastCheckedAt: number | null
     uptime1: number | null
     uptime7: number | null
@@ -42,19 +42,28 @@
   let statusAccess = ''
   let ticker: ReturnType<typeof setInterval>
 
+  let inFlight = false
   async function load(pw = '') {
+    if (inFlight || document.hidden) return
+    inFlight = true
+    try { await loadRequest(pw) }
+    catch { error = $t('pub.networkError') }
+    finally { loading = false; inFlight = false }
+  }
+
+  async function loadRequest(pw = '') {
     error = ''
     const headers: Record<string, string> = {}
     if (statusAccess) headers['X-Pingflare-Status-Access'] = statusAccess
     else if (pw) headers['X-Status-Password'] = pw
-    const res = await fetch(`/api/public/status/${slug}/monitors/${monitorId}`, { headers })
+    const res = await fetch(`/api/public/status/${slug}/monitors/${monitorId}`, { headers, signal: AbortSignal.timeout(20_000) })
     const issuedAccess = res.headers.get('X-Pingflare-Status-Access')
     if (issuedAccess) statusAccess = issuedAccess
     const json = await res.json()
     if (res.status === 401) {
       if (statusAccess && password) {
         statusAccess = ''
-        return load(password)
+        return loadRequest(password)
       }
       isProtected = true
       wrongPassword = json.error === 'wrong_password'
@@ -182,7 +191,8 @@
     <div class="max-w-5xl mx-auto px-4 py-10">
       <div class="flex items-center gap-2 px-4 py-3 rounded text-sm" role="alert"
         style="background: rgb(var(--danger-bg)); color: var(--danger-fg); border: 1px solid color-mix(in srgb, var(--danger-fg) 30%, transparent)">
-        <Icon name="exclamation-triangle" size={14} />{error}
+        <Icon name="exclamation-triangle" size={14} /><span class="min-w-0 flex-1">{error}</span>
+        <button type="button" class="btn-outline shrink-0" on:click={() => load(password)} disabled={inFlight}>{$t('ops.refresh')}</button>
       </div>
     </div>
 

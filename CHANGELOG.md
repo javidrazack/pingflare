@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Added
+- Capacity and scheduler health panel, bounded dashboard summaries, and projected demand when creating monitors
+- Notification delivery inbox, retry eligibility control, and 200 bounded provider acceptance receipts
+- Monitor maintenance controls with 4- or 12-occurrence weekly schedules in the displayed local timezone
+- Revocable 24-hour administrator sessions; credential changes invalidate sessions and refresh no longer extends them
+
+### Fixed
+- Docker SMTP cleanup, certificate validation, and credential leakage in authentication errors
+- Overdue and paused monitors no longer appear as currently healthy; public refresh failures show recovery controls
+- Literal monitor searches, bounded Docker rate-limiter memory, request timeouts, and deterministic Docker dependency installation
+
+### Upgrade
+- Apply migration 0012 before deploying the Worker; Docker applies equivalent schema changes at startup
+- Existing dashboard sessions require sign-in after this upgrade; no new Cloudflare services or bindings are required
+
 ## [1.9.0] - 2026-08-09
 
 ### Fixed

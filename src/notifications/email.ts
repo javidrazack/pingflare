@@ -60,14 +60,15 @@ class SmtpConnection {
         throw new Error('SMTP: connection closed unexpectedly')
       }
       this.buf += this.decoder.decode(value, { stream: true })
+      if (this.buf.length > 64 * 1024) throw new Error('SMTP response exceeds size limit')
     }
   }
 
-  async cmd(command: string, expect: number): Promise<void> {
+  async cmd(command: string, expect: number, stage = command.split(' ')[0]): Promise<void> {
     this.signal?.throwIfAborted()
     await this.writer.write(this.encoder.encode(command + '\r\n'))
     const code = await this.readResponse()
-    if (code !== expect) throw new Error(`SMTP: expected ${expect}, got ${code} (${command.split(' ')[0]})`)
+    if (code !== expect) throw new Error(`SMTP: expected ${expect}, got ${code} (${stage})`)
   }
 
   async sendData(message: string): Promise<void> {
@@ -149,8 +150,8 @@ export async function sendEmail(
     }
 
     await conn.cmd('AUTH LOGIN', 334)
-    await conn.cmd(utf8ToBase64(user), 334)
-    await conn.cmd(utf8ToBase64(password), 235)
+    await conn.cmd(utf8ToBase64(user), 334, 'AUTH username')
+    await conn.cmd(utf8ToBase64(password), 235, 'AUTH password')
 
     await conn.cmd(`MAIL FROM:<${sender}>`, 250)
     for (const rcpt of recipients) {
@@ -159,7 +160,9 @@ export async function sendEmail(
 
     await conn.sendData(message)
 
-    await conn.cmd('QUIT', 221)
+    // DATA's 250 response is the acceptance boundary. Close immediately below:
+    // waiting for QUIT can exhaust the outer delivery deadline after acceptance
+    // and incorrectly schedule a duplicate, even if its error is caught here.
   } finally {
     signal?.removeEventListener('abort', closeOnAbort)
     try {

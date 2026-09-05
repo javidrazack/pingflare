@@ -4,6 +4,7 @@
   import { api } from '$lib/api'
   import { channels } from '$lib/stores'
   import { t } from '$lib/i18n'
+  import DeliveryInbox from '$lib/components/DeliveryInbox.svelte'
   import NotificationForm from '$lib/components/NotificationForm.svelte'
   import Icon from '$lib/components/Icon.svelte'
   import PageLoader from '$lib/components/PageLoader.svelte'
@@ -85,6 +86,8 @@
   </div>
 
   <div class="px-4 py-5 md:px-8 md:py-8 max-w-5xl mx-auto space-y-4">
+
+    <DeliveryInbox />
 
     {#if error}
       <div class="alert items-center text-sm" role="alert"

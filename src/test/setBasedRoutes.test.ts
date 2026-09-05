@@ -206,7 +206,7 @@ describe('set-based high-cardinality route writes', () => {
     expect(response.status).toBe(200)
     expect(await ctx.db.select().from(settings))
       .toHaveLength(initialSettings.length + 100)
-    expect(tracked.statements.length).toBe(2)
+    expect(tracked.statements.length).toBe(3) // includes session revocation lookup
 
     tracked.statements.length = 0
     const tooMany = { ...values, overflow: 'rejected' }
@@ -219,6 +219,6 @@ describe('set-based high-cardinality route writes', () => {
       tooMany,
     )
     expect(rejected.status).toBe(400)
-    expect(tracked.statements).toHaveLength(0)
+    expect(tracked.statements).toHaveLength(1) // authentication only
   })
 })

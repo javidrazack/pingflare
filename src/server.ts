@@ -1,3 +1,5 @@
+import operationsRoutes from './routes/operations'
+import { createLocalRateLimiter } from './services/local-rate-limiter'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serve } from '@hono/node-server'
@@ -24,22 +26,6 @@ import backupRoutes from './routes/backup'
 import eventsRoutes from './routes/events'
 import agentRoutes from './routes/agent'
 import infrastructureRoutes from './routes/infrastructure'
-
-function createLocalRateLimiter(limit: number): RateLimit {
-  const attempts = new Map<string, { count: number; resetAt: number }>()
-  return {
-    async limit({ key }) {
-      const now = Date.now()
-      const current = attempts.get(key)
-      if (!current || now >= current.resetAt) {
-        attempts.set(key, { count: 1, resetAt: now + 60_000 })
-        return { success: true }
-      }
-      current.count += 1
-      return { success: current.count <= limit }
-    },
-  }
-}
 
 function createNoopAnalyticsDataset(): AnalyticsEngineDataset {
   return {
@@ -99,6 +85,7 @@ async function main() {
   app.route('/api/notifications', notificationRoutes)
   app.route('/api/agent', agentRoutes)
   app.route('/api/infrastructure', infrastructureRoutes)
+  app.route('/api/operations', operationsRoutes)
   app.route('/api/settings', settingsRoutes)
   app.route('/api/status-pages', statusPagesRoutes)
   app.route('/api/public/status', publicStatusRoutes)
@@ -109,7 +96,7 @@ async function main() {
   app.get('/api/health', (c) => c.json({ ok: true, ts: Date.now() }))
 
   app.post('/api/cron/run', requireAuth, async (c) => {
-    const result = await runCron(c.env)
+    const result = await runCron(c.env, 1)
     return c.json({ ok: true, triggeredAt: Date.now(), ...result })
   })
 

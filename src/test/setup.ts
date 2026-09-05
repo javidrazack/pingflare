@@ -5,7 +5,7 @@ import { getDb } from '../db'
 import { monitors, settings } from '../db/schema'
 import type { Env } from '../index'
 import { persistCheckObservations } from '../services/check-storage'
-import { SignJWT } from 'jose'
+import { issueAdminToken } from '../services/admin-session'
 import { eq } from 'drizzle-orm'
 
 export const JWT_SECRET = 'test-secret-key-exactly-32chars!!'
@@ -44,11 +44,7 @@ export function makeEnv(d1: D1Database): Env {
 }
 
 export async function makeAuthHeader(): Promise<string> {
-  const key = new TextEncoder().encode(JWT_SECRET)
-  const token = await new SignJWT({})
-    .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('1h')
-    .sign(key)
+  const token = await issueAdminToken({ ADMIN_USER: 'admin', ADMIN_PASS: 'testpass', JWT_SECRET })
   return `Bearer ${token}`
 }
 

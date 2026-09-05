@@ -15,17 +15,30 @@ interface NodeSocketLike {
   readable: ReadableStream<Uint8Array>
   writable: WritableStream<Uint8Array>
   startTls(): NodeSocketLike
-  close(): void
+  close(): Promise<void>
 }
 
-function wrapSocket(socket: net.Socket): NodeSocketLike {
+function wrapSocket(socket: net.Socket, hostname: string): NodeSocketLike {
+  let detach = () => {}
   const readable = new ReadableStream<Uint8Array>({
     start(controller) {
-      socket.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)))
-      socket.on('end', () => controller.close())
-      socket.on('error', (err) => controller.error(err))
+      let ended = false
+      const onData = (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk))
+      const onEnd = () => { if (!ended) { ended = true; controller.close() } }
+      const onError = (err: Error) => { if (!ended) { ended = true; controller.error(err) } }
+      socket.on('data', onData)
+      socket.on('end', onEnd)
+      socket.on('error', onError)
+      socket.on('close', onEnd)
+      detach = () => {
+        socket.off('data', onData)
+        socket.off('end', onEnd)
+        socket.off('error', onError)
+        socket.off('close', onEnd)
+      }
     },
     cancel() {
+      detach()
       socket.destroy()
     },
   })
@@ -51,10 +64,11 @@ function wrapSocket(socket: net.Socket): NodeSocketLike {
       // Upgrade the existing TCP connection to TLS (STARTTLS pattern).
       // tls.TLSSocket buffers writes until the handshake completes, so
       // SmtpConnection.cmd() works correctly without any extra awaiting.
-      const tlsSocket = tls.connect({ socket, rejectUnauthorized: false })
-      return wrapSocket(tlsSocket as unknown as net.Socket)
+      detach()
+      const tlsSocket = tls.connect({ socket, servername: hostname, rejectUnauthorized: true })
+      return wrapSocket(tlsSocket, hostname)
     },
-    close() {
+    async close() {
       socket.destroy()
     },
   }
@@ -67,12 +81,13 @@ export function connect(
   const implicitTLS = options?.secureTransport === 'on'
 
   const socket = implicitTLS
-    ? (tls.connect({
+    ? tls.connect({
         host: address.hostname,
         port: address.port,
-        rejectUnauthorized: false,
-      }) as unknown as net.Socket)
+        servername: address.hostname,
+        rejectUnauthorized: true,
+      })
     : net.connect({ host: address.hostname, port: address.port })
 
-  return wrapSocket(socket)
+  return wrapSocket(socket, address.hostname)
 }

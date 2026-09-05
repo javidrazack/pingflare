@@ -108,6 +108,21 @@ export const schedulerLeases = sqliteTable('scheduler_leases', {
   holder: text('holder').notNull(),
   leaseUntil: integer('lease_until').notNull(),
   updatedAt: integer('updated_at').notNull(),
+  lastCompletedAt: integer('last_completed_at'),
+  lastRunFailed: integer('last_run_failed', { mode: 'boolean' }).notNull().default(false),
+})
+
+export const revokedSessions = sqliteTable('revoked_sessions', {
+  id: text('id').primaryKey(),
+  expiresAt: integer('expires_at').notNull(),
+}, (t) => [index('idx_revoked_sessions_expiry').on(t.expiresAt)])
+
+export const deliveryReceipts = sqliteTable('delivery_receipts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  monitorName: text('monitor_name').notNull(),
+  channelName: text('channel_name').notNull(),
+  eventType: text('event_type').notNull(),
+  deliveredAt: integer('delivered_at').notNull(),
 })
 
 export const quotaBudgets = sqliteTable('quota_budgets', {

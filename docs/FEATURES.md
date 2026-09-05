@@ -21,6 +21,12 @@ Current monitor state is refreshed every 30 seconds, infrastructure state every
 minute, and aggregate uptime less frequently. Hidden tabs do not continue those
 polls.
 
+The dashboard separates overdue checks from pending and paused monitors and
+shows monitoring capacity, scheduler completion, and overdue age. Notifications
+includes a bounded delivery inbox and provider acceptance receipts. Each monitor
+has maintenance controls with finite weekly repeats. See [operational controls](OPERATIONS.md)
+for limits, session behavior, and upgrade requirements.
+
 ## Monitor types
 
 ### HTTP

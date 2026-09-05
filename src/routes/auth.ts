@@ -1,19 +1,10 @@
 import { Hono } from 'hono'
-import { SignJWT, jwtVerify } from 'jose'
+import { issueAdminToken, verifyAdminToken, revokeAdminToken, InvalidSessionError } from '../services/admin-session'
 import type { Env } from '../index'
 import { timingSafeEqualText } from '../utils'
 import { readJsonBodyWithLimit, RequestBodyTooLargeError } from '../request'
 
 const auth = new Hono<{ Bindings: Env }>()
-
-async function issueToken(sub: string, secret: string): Promise<string> {
-  const key = new TextEncoder().encode(secret)
-  return new SignJWT({ sub })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime('30d')
-    .sign(key)
-}
 
 auth.post('/login', async (c) => {
   let body: { username?: unknown; password?: unknown }
@@ -26,7 +17,7 @@ auth.post('/login', async (c) => {
     return c.json({ error: 'Invalid request', code: 'INVALID_REQUEST' }, 400)
   }
 
-  if (typeof body.username !== 'string' || typeof body.password !== 'string') {
+  if (!body || typeof body.username !== 'string' || typeof body.password !== 'string') {
     return c.json({ error: 'Username and password are required', code: 'INVALID_REQUEST' }, 400)
   }
 
@@ -45,26 +36,27 @@ auth.post('/login', async (c) => {
     return c.json({ error: 'Invalid credentials', code: 'INVALID_CREDENTIALS' }, 401)
   }
 
-  const token = await issueToken(c.env.ADMIN_USER, c.env.JWT_SECRET)
+  const token = await issueAdminToken(c.env)
   return c.json({ token })
 })
 
+// Refresh validates the existing session; it never extends its absolute lifetime.
 auth.post('/refresh', async (c) => {
-  const authorization = c.req.header('Authorization')
-  if (!authorization?.startsWith('Bearer ')) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-
-  const oldToken = authorization.slice(7)
+  const token = c.req.header('Authorization')?.replace(/^Bearer /, '')
+  if (!token) return c.json({ error: 'Unauthorized' }, 401)
   try {
-    const key = new TextEncoder().encode(c.env.JWT_SECRET)
-    await jwtVerify(oldToken, key)
-  } catch {
-    return c.json({ error: 'Invalid token' }, 401)
-  }
+    await verifyAdminToken(token, c.env)
+    return c.json({ token })
+  } catch (error) { return c.json({ error: 'Session validation unavailable' }, error instanceof InvalidSessionError ? 401 : 503) }
+})
 
-  const token = await issueToken(c.env.ADMIN_USER, c.env.JWT_SECRET)
-  return c.json({ token })
+auth.post('/logout', async (c) => {
+  const token = c.req.header('Authorization')?.replace(/^Bearer /, '')
+  if (!token) return c.json({ error: 'Unauthorized' }, 401)
+  try {
+    await revokeAdminToken(token, c.env)
+    return c.json({ ok: true })
+  } catch (error) { return c.json({ error: 'Unable to revoke session' }, error instanceof InvalidSessionError ? 401 : 503) }
 })
 
 export default auth
