@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store'
-import type { Monitor, NotificationChannel } from './api'
+import type { MonitorSummary, NotificationChannel } from './api'
 
 export const token = writable<string | null>(
   typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null,
@@ -37,5 +37,7 @@ function createTheme() {
 }
 export const theme = createTheme()
 
-export const monitors = writable<Monitor[]>([])
+export const monitors = writable<MonitorSummary[]>([])
 export const channels = writable<NotificationChannel[]>([])
+
+export const dashboardHealth = writable<{ up: number; down: number; pending: number; stale: number } | null>(null)

@@ -1,11 +1,11 @@
 FROM node:22-alpine AS frontend-builder
-WORKDIR /app/frontend
-COPY package.json /app/package.json
-COPY locales/ /app/locales/
-COPY frontend/package*.json ./
-RUN npm install
-COPY frontend/ ./
-RUN npm run build
+WORKDIR /app
+COPY package*.json ./
+COPY frontend/package*.json ./frontend/
+RUN npm ci --ignore-scripts
+COPY locales/ ./locales/
+COPY frontend/ ./frontend/
+RUN npm run build -w frontend
 
 FROM node:22-alpine AS server-builder
 RUN apk add --no-cache python3 make g++

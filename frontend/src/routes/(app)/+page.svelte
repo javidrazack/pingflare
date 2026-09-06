@@ -1,15 +1,18 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
-  import { api, ApiError } from '$lib/api'
-  import { monitors } from '$lib/stores'
+  import { api, ApiError, type MonitorSummary } from '$lib/api'
+  import { monitors, dashboardHealth } from '$lib/stores'
   import { t, locale, nMonitors } from '$lib/i18n'
   import MonitorCard from '$lib/components/MonitorCard.svelte'
+  import OperationsPanel from '$lib/components/OperationsPanel.svelte'
   import Icon from '$lib/components/Icon.svelte'
   import PageLoader from '$lib/components/PageLoader.svelte'
   import HeaderPattern from '$lib/components/HeaderPattern.svelte'
 
   type LoadState = 'loading' | 'ready' | 'error'
 
+  let totals = { total: 0, up: 0, down: 0, pending: 0, stale: 0 }
+  let watchlist: MonitorSummary[] = []
   let currentState: LoadState = 'loading'
   let analyticsState: LoadState = 'loading'
   let hasCurrentData = false
@@ -54,8 +57,10 @@
     if (foreground && !hasCurrentData) currentState = 'loading'
     currentInFlight = true
     try {
-      const list = await api.monitors.list()
-      monitors.set(list)
+      const result = await api.operations.dashboard()
+      totals = result.summary
+      dashboardHealth.set(result.summary)
+      monitors.set(result.items)
       hasCurrentData = true
       currentState = 'ready'
       currentUpdatedAt = new Date()
@@ -74,8 +79,9 @@
     if (foreground && !hasAnalyticsData) analyticsState = 'loading'
     analyticsInFlight = true
     try {
-      const summary = await api.monitors.uptimeSummary(30)
-      uptimes = summary.uptimes
+      const result = await api.operations.watchlist()
+      watchlist = result.items
+      uptimes = Object.fromEntries(result.items.map(m => [m.id, m.uptime]))
       hasAnalyticsData = true
       analyticsState = 'ready'
       analyticsUpdatedAt = new Date()
@@ -150,20 +156,13 @@
     document.removeEventListener('visibilitychange', handleVisibility)
   })
 
-  $: total   = $monitors.length
-  $: up      = $monitors.filter(m => m.lastStatus === 'up').length
-  $: down    = $monitors.filter(m => m.lastStatus === 'down').length
-  $: pending = $monitors.filter(m => m.lastStatus === 'pending').length
-  $: allUp   = total > 0 && down === 0 && pending === 0
+  $: total = totals.total
+  $: up = totals.up
+  $: down = totals.down
+  $: pending = totals.pending
+  $: stale = totals.stale
+  $: allUp = up > 0 && down === 0 && pending === 0 && stale === 0 && currentState === 'ready'
   $: attention = $monitors
-    .filter(m => m.lastStatus !== 'up')
-    .sort((a, b) => (a.lastStatus === 'down' ? -1 : 1) - (b.lastStatus === 'down' ? -1 : 1))
-  $: watchlist = hasAnalyticsData
-    ? $monitors
-        .filter(m => m.lastStatus === 'up')
-        .sort((a, b) => (uptimes[a.id] ?? 101) - (uptimes[b.id] ?? 101))
-        .slice(0, 5)
-    : []
 
   $: downLabel    = `${nMonitors($locale, down)} ${$t('dashboard.down').toLowerCase()}`
   $: pendingSummary = $t(
@@ -198,6 +197,8 @@
               <span class="w-1.5 h-1.5 rounded-full inline-block" style="background: var(--danger-fg)"></span>
               {downLabel}
             </span>
+          {:else if stale > 0}
+            <span class="badge badge-pending mb-2">{$t('dashboard.staleCount', { count: stale })}</span>
           {:else if pending > 0}
             <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded mb-2"
               style="background: rgb(var(--pending-bg)); color: var(--pending-fg); border: 1px solid color-mix(in srgb, var(--pending-fg) 20%, transparent)">
@@ -280,7 +281,7 @@
       </div>
     {/if}
 
-    {#if hasCurrentData && (total > 0 || up > 0 || down > 0 || pending > 0)}
+    {#if hasCurrentData && (total > 0 || up > 0 || down > 0 || pending > 0 || stale > 0)}
     <section class="status-overview">
       {#if total > 0}
       <div class="status-metric status-metric-total">
@@ -337,6 +338,13 @@
         <div class="text-xs mt-1" style="color: rgb(var(--text-muted))">{$t('dashboard.awaitingCheck')}</div>
       </div>
       {/if}
+      {#if stale > 0}
+      <div class="status-metric">
+        <span class="text-xs font-medium" style="color: rgb(var(--text-muted))">{$t('status.stale')}</span>
+        <div class="status-metric-value tabular-nums mt-3" style="color: var(--warning-fg)">{stale}</div>
+        <p class="text-xs mt-1" style="color: rgb(var(--text-muted))">{$t('dashboard.staleHelp')}</p>
+      </div>
+      {/if}
     </section>
     {/if}
 
@@ -377,7 +385,7 @@
         </div>
       {/if}
 
-      {#if $monitors.length === 0}
+      {#if total === 0}
       <div class="rounded text-center py-16 space-y-4"
         style="border: 1px solid var(--border-color); background-color: rgb(var(--card));">
         <div class="w-12 h-12 rounded flex items-center justify-center mx-auto"
@@ -408,8 +416,11 @@
         <section class="space-y-3">
           <div class="flex items-center justify-between">
             <h2 class="text-lg font-semibold" style="color: rgb(var(--text))">{$t('dashboard.needsAttention')}</h2>
-            <a href="/monitors?status=down" class="btn-ghost">{$t('dashboard.viewMonitors')}</a>
+            <a href="/monitors" class="btn-ghost">{$t('dashboard.viewMonitors')}</a>
           </div>
+          {#if down + pending + stale > attention.length}
+            <p class="text-sm" style="color: rgb(var(--text-muted))">{$t('dashboard.attentionLimit')}</p>
+          {/if}
           {#if attention.length > 0}
             {#each attention as monitor (monitor.id)}
               <MonitorCard {monitor} uptime={uptimes[monitor.id] ?? null} />
@@ -420,7 +431,7 @@
                 <Icon name="check-circle" size={20} />
               </div>
               <div>
-                <p class="font-semibold" style="color: rgb(var(--text))">{$t('dashboard.allOperational')}</p>
+                <p class="font-semibold" style="color: rgb(var(--text))">{up > 0 ? $t('dashboard.allOperational') : $t('status.noActive')}</p>
                 <p class="text-sm" style="color: rgb(var(--text-muted))">{$t('dashboard.noActiveIssues')}</p>
               </div>
             </div>
@@ -467,6 +478,7 @@
       {/if}
     {/if}
 
+    <OperationsPanel />
   </div>
 </div>
 

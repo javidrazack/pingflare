@@ -2,6 +2,10 @@
 
 ## 1. Dependencies
 
+Use Node.js 22, matching CI and Docker (`nvm use` reads `.nvmrc`). If you
+change Node versions after installation, run `npm rebuild better-sqlite3`
+or reinstall dependencies before running the backend tests.
+
 ```bash
 npm ci
 ```

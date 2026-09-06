@@ -1,13 +1,13 @@
 <script lang="ts">
   import { t } from '$lib/i18n'
 
-  export let status: 'up' | 'down' | 'pending'
+  export let status: import('$lib/api').DisplayStatus
 
   $: label = status === 'up'
     ? $t('dashboard.operational')
     : status === 'down'
     ? $t('dashboard.down')
-    : $t('dashboard.pending')
+    : status === 'stale' ? $t('status.stale') : status === 'paused' ? $t('status.paused') : $t('dashboard.pending')
 
   $: dotColor = status === 'up'
     ? 'var(--success-fg)'
@@ -19,7 +19,7 @@
 <span class="badge
   {status === 'up'      ? 'badge-up'      : ''}
   {status === 'down'    ? 'badge-down'    : ''}
-  {status === 'pending' ? 'badge-pending' : ''}
+  {!['up', 'down'].includes(status) ? 'badge-pending' : ''}
 ">
   <span class="h-1.5 w-1.5 rounded-full shrink-0" style="background: {dotColor}"></span>
   {label}

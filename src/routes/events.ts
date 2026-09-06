@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
-import { jwtVerify } from 'jose'
+import { verifyAdminToken, InvalidSessionError } from '../services/admin-session'
 import { getDb, monitors } from '../db'
 import type { Env } from '../index'
 
@@ -13,10 +13,9 @@ router.get('/', async (c) => {
   if (!token) return c.json({ error: 'Unauthorized' }, 401)
 
   try {
-    const key = new TextEncoder().encode(c.env.JWT_SECRET)
-    await jwtVerify(token, key)
-  } catch {
-    return c.json({ error: 'Invalid token' }, 401)
+    await verifyAdminToken(token, c.env)
+  } catch (error) {
+    return c.json({ error: 'Session validation failed' }, error instanceof InvalidSessionError ? 401 : 503)
   }
 
   const database = getDb(c.env.DB)
@@ -30,9 +29,13 @@ router.get('/', async (c) => {
     await stream.writeSSE({ event: 'snapshot', data: JSON.stringify(snapshot) })
 
     let ticks = 0
-    while (alive) {
+    // Bound each stream below the D1 invocation budget; clients reconnect.
+    while (alive && ticks < 10) {
       await stream.sleep(30_000)
       if (!alive) break
+
+      try { await verifyAdminToken(token, c.env) }
+      catch { break }
 
       ticks++
       await stream.writeSSE({ event: 'heartbeat', data: JSON.stringify({ ts: Date.now() }) })

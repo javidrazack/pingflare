@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from 'svelte'
+  import OperationsPanel from './OperationsPanel.svelte'
   import { api } from '$lib/api'
   import type { Monitor, MonitorPayload, NotificationChannel } from '$lib/api'
   import { t } from '$lib/i18n'
@@ -283,11 +284,12 @@
       </div>
       <div>
         <label for="m-ip" class="label">{$t('monitorForm.ipVersion')}</label>
-        <select id="m-ip" class="input" bind:value={ipVersion}>
+        <select id="m-ip" class="input" bind:value={ipVersion} disabled aria-describedby="ip-help">
           <option value="auto">{$t('monitorForm.ipAuto')}</option>
           <option value="ipv4">IPv4</option>
           <option value="ipv6">IPv6</option>
         </select>
+        <p id="ip-help" class="mt-1 text-xs" style="color: rgb(var(--text-muted))">{$t('monitorForm.ipUnsupported')}</p>
       </div>
     </div>
 
@@ -505,6 +507,9 @@
   {/if}
 
   {#if mode === 'create' && step === 4}
+    <OperationsPanel compact
+      additionalScheduled={active && ['http', 'dns', 'ping'].includes(tab) ? 60 / Math.max(Number(interval) || 60, 60) : 0}
+      additionalInbound={active && ['heartbeat', 'agent'].includes(tab) ? 60 / Math.max(Number(heartbeatInterval) || 60, 60) : 0} />
     <section aria-labelledby="monitor-review-title" class="space-y-4">
       <div>
         <h2 id="monitor-review-title" class="text-lg font-semibold">{$t('monitorForm.reviewTitle')}</h2>

@@ -13,6 +13,7 @@
     Incident,
     DailyUptime,
   } from '$lib/api'
+  import MaintenancePanel from '$lib/components/MaintenancePanel.svelte'
   import StatusBadge from '$lib/components/StatusBadge.svelte'
   import UptimeChart from '$lib/components/UptimeChart.svelte'
   import ResponseTimeChart from '$lib/components/ResponseTimeChart.svelte'
@@ -56,7 +57,7 @@
   let running = false
   let logsPage = 0
   let avgResponseTime: number | null = null
-  const tabs = ['overview', 'performance', 'incidents', 'logs', 'configuration'] as const
+  const tabs = ['overview', 'performance', 'incidents', 'logs', 'configuration', 'maintenance'] as const
   type DetailTab = typeof tabs[number]
   $: requestedTab = $page.url.searchParams.get('tab')
   $: activeTab = tabs.includes(requestedTab as DetailTab) ? requestedTab as DetailTab : 'overview'
@@ -292,7 +293,7 @@
           <div class="min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
               <h1 class="text-xl md:text-3xl font-semibold tracking-tight" style="color: rgb(var(--text))">{monitor.name}</h1>
-              <StatusBadge status={monitor.lastStatus} />
+              <StatusBadge status={monitor.displayStatus ?? monitor.lastStatus} />
               {#if monitor.sslCheckEnabled && monitor.sslStatus !== 'unknown'}
                 <span class="text-xs px-2 py-0.5 rounded font-medium {monitor.sslStatus === 'ok' ? 'text-green-600' : 'text-red-400'}"
                   style="background: {monitor.sslStatus === 'ok' ? 'rgb(var(--success-bg))' : 'rgb(var(--danger-bg))'}">
@@ -379,6 +380,8 @@
         </a>
       {/each}
     </nav>
+
+    {#if activeTab === 'maintenance'}<MaintenancePanel monitorId={id} />{/if}
 
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3" class:hidden={activeTab !== 'overview'}>
       <div class="stat-card">

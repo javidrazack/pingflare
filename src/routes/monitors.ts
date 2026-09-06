@@ -1,5 +1,6 @@
+import { displayStatus } from '../services/monitor-freshness'
 import { Hono, type Context } from 'hono'
-import { and, asc, count, desc, eq, like, or, type SQL } from 'drizzle-orm'
+import { and, asc, count, desc, eq, or, type SQL, sql, gte } from 'drizzle-orm'
 import { getDb, monitors, heartbeatTokens, alertState, monitorNotifications, maintenanceWindows } from '../db'
 import { requireAuth } from '../middleware/auth'
 import { encryptField, isEncryptedValue } from '../utils'
@@ -30,7 +31,7 @@ function destructiveBudgetResponse(
 }
 
 function sanitizeMonitor<T extends typeof monitors.$inferSelect>(monitor: T): T {
-  return { ...monitor, authPassword: null, authToken: null }
+  return { ...monitor, authPassword: null, authToken: null, displayStatus: displayStatus(monitor) }
 }
 
 async function encryptCredential(value: unknown, encryptionKey: string): Promise<string | null> {
@@ -139,12 +140,12 @@ router.get('/', async (c) => {
   if (type && MONITOR_TYPES.has(type)) conditions.push(eq(monitors.type, type as (typeof monitors.$inferSelect)['type']))
   if (active === 'true' || active === 'false') conditions.push(eq(monitors.active, active === 'true'))
   if (search) {
-    const pattern = `%${search.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`
+    const pattern = `%${search.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`
     conditions.push(or(
-      like(monitors.name, pattern),
-      like(monitors.url, pattern),
-      like(monitors.tags, pattern),
-      like(monitors.dnsHostname, pattern),
+      sql`${monitors.name} LIKE ${pattern} ESCAPE '\\'`,
+      sql`${monitors.url} LIKE ${pattern} ESCAPE '\\'`,
+      sql`${monitors.tags} LIKE ${pattern} ESCAPE '\\'`,
+      sql`${monitors.dnsHostname} LIKE ${pattern} ESCAPE '\\'`,
     )!)
   }
   const where = conditions.length > 0 ? and(...conditions) : undefined
@@ -518,7 +519,9 @@ router.get('/:id/maintenance', async (c) => {
   const db = getDb(c.env.DB)
   const rows = await db.select()
     .from(maintenanceWindows)
-    .where(eq(maintenanceWindows.monitorId, c.req.param('id')))
+    .where(and(eq(maintenanceWindows.monitorId, c.req.param('id')),
+      gte(maintenanceWindows.endAt, Math.floor(Date.now() / 1000))))
+    .orderBy(asc(maintenanceWindows.startAt)).limit(100)
   return c.json(rows)
 })
 
@@ -541,15 +544,28 @@ router.post('/:id/maintenance', async (c) => {
     where: eq(monitors.id, c.req.param('id')),
   })
   if (!monitor) return c.json({ error: 'Not found' }, 404)
-  const id = crypto.randomUUID()
-  await db.insert(maintenanceWindows).values({
-    id,
-    monitorId: c.req.param('id'),
-    startAt: body.startAt,
-    endAt: body.endAt,
-    reason: body.reason ?? null,
-  })
-  return c.json({ ok: true, id })
+  const occurrences: unknown = body.occurrences ?? [{ startAt: body.startAt, endAt: body.endAt }]
+  const now = Math.floor(Date.now() / 1000)
+  const validWindow = (w: unknown): w is { startAt: number; endAt: number } =>
+    typeof w === 'object' && w !== null && 'startAt' in w && 'endAt' in w
+    && typeof w.startAt === 'number' && typeof w.endAt === 'number'
+    && Number.isSafeInteger(w.startAt) && Number.isSafeInteger(w.endAt)
+    && w.startAt < w.endAt && w.endAt > now
+    && w.endAt - w.startAt <= 31 * 86400 && w.endAt <= now + 366 * 86400
+  if (!Array.isArray(occurrences) || occurrences.length < 1 || occurrences.length > 12
+    || !occurrences.every(validWindow)) {
+    return c.json({ error: 'Choose 1–12 valid windows within the next year (maximum 31 days each)' }, 400)
+  }
+  const rows = occurrences.map(w => ({
+    id: crypto.randomUUID(), startAt: w.startAt, endAt: w.endAt,
+  }))
+  const result = await c.env.DB.prepare(`INSERT INTO maintenance_windows (id, monitor_id, start_at, end_at, reason)
+    SELECT json_extract(value, '$.id'), ?, json_extract(value, '$.startAt'), json_extract(value, '$.endAt'), ?
+    FROM json_each(?)
+    WHERE (SELECT COUNT(*) FROM maintenance_windows WHERE monitor_id = ? AND end_at >= ?) + ? <= 100`)
+    .bind(monitor.id, body.reason ?? null, JSON.stringify(rows), monitor.id, now, rows.length).run()
+  if (Number(result.meta.changes) !== rows.length) return c.json({ error: 'At most 100 upcoming maintenance windows per monitor' }, 409)
+  return c.json({ ok: true, id: rows[0].id, created: rows.length })
 })
 
 router.delete('/:id/maintenance/:maintenanceId', async (c) => {

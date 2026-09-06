@@ -2,7 +2,8 @@
   import { onMount, tick } from 'svelte'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
-  import { theme, monitors } from '$lib/stores'
+  import { api } from '$lib/api'
+  import { theme, monitors, dashboardHealth } from '$lib/stores'
   import { t } from '$lib/i18n'
   import Icon from '$lib/components/Icon.svelte'
 
@@ -63,9 +64,16 @@
       }
     }
   })
-  function logout() {
-    localStorage.removeItem('token')
-    goto('/login')
+  async function logout() {
+    try {
+      await api.auth.logout()
+      localStorage.removeItem('token')
+      monitors.set([])
+      dashboardHealth.set(null)
+      goto('/login')
+    } catch {
+      alert($t('session.logoutFailed'))
+    }
   }
 
   $: nav = [
@@ -124,9 +132,9 @@
 
   $: {
     if (typeof document !== 'undefined') {
-      const anyDown    = $monitors.some(m => m.lastStatus === 'down')
-      const anyPending = $monitors.length > 0 && $monitors.some(m => m.lastStatus === 'pending')
-      const color = anyDown ? '#ef4444' : anyPending ? '#f97316' : '#22c55e'
+      const health = $dashboardHealth
+      const color = !health || health.up + health.down + health.pending + health.stale === 0
+        ? '#94a3b8' : health.down > 0 ? '#ef4444' : health.pending + health.stale > 0 ? '#f97316' : '#22c55e'
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="${color}"/></svg>`
       const dataUrl = `data:image/svg+xml,${encodeURIComponent(svg)}`
       let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')

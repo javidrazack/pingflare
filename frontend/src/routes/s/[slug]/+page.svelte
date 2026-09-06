@@ -22,19 +22,28 @@
   let isFullscreen = false
   let countdown = 60
 
+  let inFlight = false
   async function load(pw = '') {
+    if (inFlight || document.hidden) return
+    inFlight = true
+    try { await loadRequest(pw) }
+    catch { error = $t('pub.networkError') }
+    finally { loading = false; inFlight = false }
+  }
+
+  async function loadRequest(pw = '') {
     error = ''
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (statusAccess) headers['X-Pingflare-Status-Access'] = statusAccess
     else if (pw) headers['X-Status-Password'] = pw
-    const res = await fetch(`/api/public/status/${slug}`, { headers })
+    const res = await fetch(`/api/public/status/${slug}`, { headers, signal: AbortSignal.timeout(20_000) })
     const issuedAccess = res.headers.get('X-Pingflare-Status-Access')
     if (issuedAccess) statusAccess = issuedAccess
     const json = await res.json()
     if (res.status === 401) {
       if (statusAccess && password) {
         statusAccess = ''
-        return load(password)
+        return loadRequest(password)
       }
       isProtected = true
       wrongPassword = json.error === 'wrong_password'
@@ -86,9 +95,9 @@
   }
 
   $: overallStatus = (() => {
-    if (!data || data.monitors.length === 0) return 'unknown'
+    if (error || !data || data.monitors.length === 0) return 'unknown'
     if (data.monitors.some(m => m.status === 'down')) return 'outage'
-    if (data.monitors.some(m => m.status === 'pending')) return 'degraded'
+    if (data.monitors.some(m => m.status !== 'up')) return 'degraded'
     return 'operational'
   })()
 
@@ -114,15 +123,17 @@
     return 'bg-red-400'
   }
 
-  $: statusLabel = (s: string): string =>
-    ({ up: $t('pub.statusOperational'), down: $t('pub.statusOutage'), pending: $t('pub.statusPending') } as Record<string,string>)[s] ?? s
+  $: statusLabel = (s: string): string => error ? $t('status.stale') :
+    ({ up: $t('pub.statusOperational'), down: $t('pub.statusOutage'), pending: $t('pub.statusPending'), stale: $t('status.stale'), paused: $t('status.paused') } as Record<string,string>)[s] ?? s
 
   function statusDotCls(s: string): string {
+    if (error) return 'bg-orange-400'
     return ({ up: 'bg-green-500', down: 'bg-red-500', pending: 'bg-orange-400' } as Record<string,string>)[s] ?? 'bg-[rgb(var(--text-muted))]'
   }
 
   function statusAccentColor(s: string): string {
-    return ({ up: 'var(--success-fg)', down: 'var(--danger-fg)', pending: 'var(--color-primary)' } as Record<string,string>)[s] ?? 'var(--success-fg)'
+    if (error) return 'var(--warning-fg)'
+    return ({ up: 'var(--success-fg)', down: 'var(--danger-fg)', pending: 'var(--color-primary)', stale: 'var(--warning-fg)', paused: 'rgb(var(--text-muted))' } as Record<string,string>)[s] ?? 'rgb(var(--text-muted))'
   }
 
   function incidentBadgeCls(s: IncidentStatus): string {
@@ -264,7 +275,8 @@
     {#if error}
       <div class="flex items-center gap-2 px-4 py-3 rounded text-sm" role="alert"
         style="background: rgb(var(--danger-bg)); color: var(--danger-fg); border: 1px solid color-mix(in srgb, var(--danger-fg) 30%, transparent)">
-        <Icon name="exclamation-triangle" size={14} />{error}
+        <Icon name="exclamation-triangle" size={14} /><span class="min-w-0 flex-1">{error}</span>
+        <button type="button" class="btn-outline shrink-0" on:click={() => load(password)} disabled={inFlight}>{$t('ops.refresh')}</button>
       </div>
     {/if}
 

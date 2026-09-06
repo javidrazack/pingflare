@@ -202,7 +202,7 @@
                   </span>
                 </a>
               </td>
-              <td class="p-3"><StatusBadge status={monitor.lastStatus} /></td>
+              <td class="p-3"><StatusBadge status={monitor.displayStatus ?? monitor.lastStatus} /></td>
               <td class="p-3 uppercase" style="color: rgb(var(--text-muted))">{monitor.type}</td>
               <td class="p-3" style="color: rgb(var(--text-muted))">{formatRelative(monitor.lastCheckedAt, $locale)}</td>
               <td class="p-3">

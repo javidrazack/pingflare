@@ -1,15 +1,15 @@
 <script lang="ts">
   import { formatRelative, formatUptime, parseTags } from '$lib/utils'
-  import type { Monitor } from '$lib/api'
+  import type { MonitorSummary } from '$lib/api'
   import { t, locale } from '$lib/i18n'
   import StatusBadge from '$lib/components/StatusBadge.svelte'
 
-  export let monitor: Monitor
+  export let monitor: MonitorSummary
   export let uptime: number | null = null
 
-  $: isDown = monitor.lastStatus === 'down'
-  $: isPending = monitor.lastStatus === 'pending'
-  $: isUp = monitor.lastStatus === 'up'
+  $: isDown = (monitor.displayStatus ?? monitor.lastStatus) === 'down'
+  $: isPending = !['up', 'down'].includes(monitor.displayStatus ?? monitor.lastStatus)
+  $: isUp = (monitor.displayStatus ?? monitor.lastStatus) === 'up'
 
   $: accentColor = isDown
     ? 'var(--danger-fg)'
@@ -43,7 +43,7 @@
         style="background-color: rgb(var(--bg-muted)); color: rgb(var(--text-muted))">
         {monitor.type}
       </span>
-      <StatusBadge status={monitor.lastStatus} />
+      <StatusBadge status={monitor.displayStatus ?? monitor.lastStatus} />
       {#each parseTags(monitor.tags) as tag}
         <span class="text-xs px-2 py-0.5 rounded font-medium"
           style="background: color-mix(in srgb, var(--color-primary) 10%, transparent); color: var(--color-primary)">

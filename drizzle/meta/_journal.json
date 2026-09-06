@@ -85,6 +85,13 @@
       "when": 1785425232157,
       "tag": "0011_demonic_champions",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1788595975657,
+      "tag": "0012_awesome_longshot",
+      "breakpoints": true
     }
   ]
 }

@@ -78,10 +78,13 @@ async function acquireSchedulerLease(env: Env, holder: string, now: number): Pro
   return row?.holder === holder
 }
 
-async function releaseSchedulerLease(env: Env, holder: string): Promise<void> {
+async function releaseSchedulerLease(env: Env, holder: string, completed: boolean): Promise<void> {
   await env.DB.prepare(
-    `DELETE FROM scheduler_leases WHERE name = 'monitor-cron' AND holder = ?`,
-  ).bind(holder).run()
+    `UPDATE scheduler_leases SET lease_until = 0,
+      last_completed_at = CASE WHEN ? THEN ? ELSE last_completed_at END,
+      last_run_failed = ?
+      WHERE name = 'monitor-cron' AND holder = ?`,
+  ).bind(completed ? 1 : 0, Math.floor(Date.now() / 1000), completed ? 0 : 1, holder).run()
 }
 
 async function renewSchedulerLease(env: Env, holder: string): Promise<boolean> {
@@ -430,13 +433,14 @@ async function rescheduleFailedAlertObservations(
   }
 }
 
-export async function runCron(env: Env): Promise<CronResult> {
+export async function runCron(env: Env, reservedQueries = 0): Promise<CronResult> {
   const holder = crypto.randomUUID()
   const now = Math.floor(Date.now() / 1000)
   if (!(await acquireSchedulerLease(env, holder, now))) {
     return { checked: 0, deferred: 0, diagnosticsWritten: 0, skippedBecauseLeased: true }
   }
 
+  let completed = false
   try {
     const db = getDb(env.DB)
     const catchup = await catchUpLegacyStatusLogs(env, now)
@@ -454,6 +458,7 @@ export async function runCron(env: Env): Promise<CronResult> {
       await drainNotificationDeliveries(db, env.ENCRYPTION_KEY).catch((error) => {
         console.error('[cron] notification delivery drain failed:', error)
       })
+      completed = true
       return { checked: 0, deferred: 0, diagnosticsWritten: 0, skippedBecauseLeased: false }
     }
 
@@ -479,7 +484,7 @@ export async function runCron(env: Env): Promise<CronResult> {
 
     while (offset < due.length) {
       const renewalQueries = 1
-      const remainingQueryBudget = OBSERVATION_D1_QUERY_BUDGET
+      const remainingQueryBudget = OBSERVATION_D1_QUERY_BUDGET - reservedQueries
         - estimatedQueriesUsed
         - renewalQueries
       const safeBatchSize = Math.min(
@@ -630,7 +635,7 @@ export async function runCron(env: Env): Promise<CronResult> {
     }
     await rescheduleFailedAlertObservations(env, failedAlertObservations, now + 60)
 
-    const remainingForDrain = WORKER_D1_QUERY_BUDGET
+    const remainingForDrain = WORKER_D1_QUERY_BUDGET - reservedQueries
       - MAX_FIXED_CRON_D1_QUERIES
       - estimatedQueriesUsed
     const drainAttempts = remainingForDrain >= MAX_NOTIFICATION_DRAIN_D1_QUERIES
@@ -645,6 +650,7 @@ export async function runCron(env: Env): Promise<CronResult> {
       console.error('[cron] notification delivery drain failed:', error)
     })
 
+    completed = failedAlertObservations.length === 0
     return {
       checked: acceptedObservations.length,
       deferred: due.length - acceptedObservations.length,
@@ -653,7 +659,7 @@ export async function runCron(env: Env): Promise<CronResult> {
     }
   } finally {
     try {
-      await releaseSchedulerLease(env, holder)
+      await releaseSchedulerLease(env, holder, completed)
     } catch (error) {
       console.error('[cron] failed to release scheduler lease:', error)
     }

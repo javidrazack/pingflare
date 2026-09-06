@@ -1,0 +1,2070 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "b464ff13-ee16-4466-99ab-421abe59657d",
+  "prevId": "fcf3d5cf-8a49-4d4f-a08f-15066abeb74c",
+  "tables": {
+    "agent_metric_samples": {
+      "name": "agent_metric_samples",
+      "columns": {
+        "monitor_id": {
+          "name": "monitor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sampled_at": {
+          "name": "sampled_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cpu_basis_points": {
+          "name": "cpu_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ram_basis_points": {
+          "name": "ram_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "disk_basis_points": {
+          "name": "disk_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "agent_metric_samples_monitor_id_monitors_id_fk": {
+          "name": "agent_metric_samples_monitor_id_monitors_id_fk",
+          "tableFrom": "agent_metric_samples",
+          "tableTo": "monitors",
+          "columnsFrom": [
+            "monitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "agent_metric_samples_monitor_id_sampled_at_pk": {
+          "columns": [
+            "monitor_id",
+            "sampled_at"
+          ],
+          "name": "agent_metric_samples_monitor_id_sampled_at_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "alert_state": {
+      "name": "alert_state",
+      "columns": {
+        "monitor_id": {
+          "name": "monitor_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "consecutive_failures": {
+          "name": "consecutive_failures",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "consecutive_missed": {
+          "name": "consecutive_missed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "alert_sent_at": {
+          "name": "alert_sent_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "consecutive_alerts": {
+          "name": "consecutive_alerts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "last_reminder_at": {
+          "name": "last_reminder_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "surge_paused_until": {
+          "name": "surge_paused_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "alert_state_monitor_id_monitors_id_fk": {
+          "name": "alert_state_monitor_id_monitors_id_fk",
+          "tableFrom": "alert_state",
+          "tableTo": "monitors",
+          "columnsFrom": [
+            "monitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "delivery_receipts": {
+      "name": "delivery_receipts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "monitor_name": {
+          "name": "monitor_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "channel_name": {
+          "name": "channel_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "delivered_at": {
+          "name": "delivered_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "heartbeat_tokens": {
+      "name": "heartbeat_tokens",
+      "columns": {
+        "monitor_id": {
+          "name": "monitor_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_ping_at": {
+          "name": "last_ping_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "heartbeat_tokens_token_unique": {
+          "name": "heartbeat_tokens_token_unique",
+          "columns": [
+            "token"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "heartbeat_tokens_monitor_id_monitors_id_fk": {
+          "name": "heartbeat_tokens_monitor_id_monitors_id_fk",
+          "tableFrom": "heartbeat_tokens",
+          "tableTo": "monitors",
+          "columnsFrom": [
+            "monitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "incident_feed_monitor_counts": {
+      "name": "incident_feed_monitor_counts",
+      "columns": {
+        "monitor_id": {
+          "name": "monitor_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "link_count": {
+          "name": "link_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "incident_feed_monitor_counts_monitor_id_monitors_id_fk": {
+          "name": "incident_feed_monitor_counts_monitor_id_monitors_id_fk",
+          "tableFrom": "incident_feed_monitor_counts",
+          "tableTo": "monitors",
+          "columnsFrom": [
+            "monitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "incident_monitors": {
+      "name": "incident_monitors",
+      "columns": {
+        "incident_id": {
+          "name": "incident_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "monitor_id": {
+          "name": "monitor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_incident_monitors_monitor": {
+          "name": "idx_incident_monitors_monitor",
+          "columns": [
+            "monitor_id",
+            "incident_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "incident_monitors_incident_id_incident_reports_id_fk": {
+          "name": "incident_monitors_incident_id_incident_reports_id_fk",
+          "tableFrom": "incident_monitors",
+          "tableTo": "incident_reports",
+          "columnsFrom": [
+            "incident_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "incident_monitors_monitor_id_monitors_id_fk": {
+          "name": "incident_monitors_monitor_id_monitors_id_fk",
+          "tableFrom": "incident_monitors",
+          "tableTo": "monitors",
+          "columnsFrom": [
+            "monitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "incident_monitors_incident_id_monitor_id_pk": {
+          "columns": [
+            "incident_id",
+            "monitor_id"
+          ],
+          "name": "incident_monitors_incident_id_monitor_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "incident_report_events": {
+      "name": "incident_report_events",
+      "columns": {
+        "incident_id": {
+          "name": "incident_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_incident_report_events_event": {
+          "name": "idx_incident_report_events_event",
+          "columns": [
+            "event_id",
+            "incident_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "incident_report_events_incident_id_incident_reports_id_fk": {
+          "name": "incident_report_events_incident_id_incident_reports_id_fk",
+          "tableFrom": "incident_report_events",
+          "tableTo": "incident_reports",
+          "columnsFrom": [
+            "incident_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "incident_report_events_event_id_incidents_id_fk": {
+          "name": "incident_report_events_event_id_incidents_id_fk",
+          "tableFrom": "incident_report_events",
+          "tableTo": "incidents",
+          "columnsFrom": [
+            "event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "incident_report_events_incident_id_event_id_pk": {
+          "columns": [
+            "incident_id",
+            "event_id"
+          ],
+          "name": "incident_report_events_incident_id_event_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "incident_reports": {
+      "name": "incident_reports",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "visibility": {
+          "name": "visibility",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'published'"
+        },
+        "impact": {
+          "name": "impact",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'minor'"
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "incident_updates": {
+      "name": "incident_updates",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "incident_id": {
+          "name": "incident_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "idx_incident_updates_incident_created_id": {
+          "name": "idx_incident_updates_incident_created_id",
+          "columns": [
+            "incident_id",
+            "created_at",
+            "id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "incident_updates_incident_id_incident_reports_id_fk": {
+          "name": "incident_updates_incident_id_incident_reports_id_fk",
+          "tableFrom": "incident_updates",
+          "tableTo": "incident_reports",
+          "columnsFrom": [
+            "incident_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "incidents": {
+      "name": "incidents",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "monitor_id": {
+          "name": "monitor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "duration_seconds": {
+          "name": "duration_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_incidents_one_open": {
+          "name": "idx_incidents_one_open",
+          "columns": [
+            "monitor_id"
+          ],
+          "isUnique": true,
+          "where": "\"incidents\".\"resolved_at\" IS NULL"
+        },
+        "idx_incidents_monitor_started_id": {
+          "name": "idx_incidents_monitor_started_id",
+          "columns": [
+            "monitor_id",
+            "started_at",
+            "id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "incidents_monitor_id_monitors_id_fk": {
+          "name": "incidents_monitor_id_monitors_id_fk",
+          "tableFrom": "incidents",
+          "tableTo": "monitors",
+          "columnsFrom": [
+            "monitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "maintenance_windows": {
+      "name": "maintenance_windows",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "monitor_id": {
+          "name": "monitor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "start_at": {
+          "name": "start_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "end_at": {
+          "name": "end_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_maintenance_monitor_window": {
+          "name": "idx_maintenance_monitor_window",
+          "columns": [
+            "monitor_id",
+            "start_at",
+            "end_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "maintenance_windows_monitor_id_monitors_id_fk": {
+          "name": "maintenance_windows_monitor_id_monitors_id_fk",
+          "tableFrom": "maintenance_windows",
+          "tableTo": "monitors",
+          "columnsFrom": [
+            "monitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "monitor_daily_rollups": {
+      "name": "monitor_daily_rollups",
+      "columns": {
+        "monitor_id": {
+          "name": "monitor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "day": {
+          "name": "day",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "checks": {
+          "name": "checks",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "up_count": {
+          "name": "up_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "down_count": {
+          "name": "down_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "response_count": {
+          "name": "response_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "response_sum_ms": {
+          "name": "response_sum_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "response_min_ms": {
+          "name": "response_min_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "response_max_ms": {
+          "name": "response_max_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_monitor_daily_day": {
+          "name": "idx_monitor_daily_day",
+          "columns": [
+            "day"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "monitor_daily_rollups_monitor_id_monitors_id_fk": {
+          "name": "monitor_daily_rollups_monitor_id_monitors_id_fk",
+          "tableFrom": "monitor_daily_rollups",
+          "tableTo": "monitors",
+          "columnsFrom": [
+            "monitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "monitor_daily_rollups_monitor_id_day_pk": {
+          "columns": [
+            "monitor_id",
+            "day"
+          ],
+          "name": "monitor_daily_rollups_monitor_id_day_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "monitor_notifications": {
+      "name": "monitor_notifications",
+      "columns": {
+        "monitor_id": {
+          "name": "monitor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "monitor_notifications_monitor_id_monitors_id_fk": {
+          "name": "monitor_notifications_monitor_id_monitors_id_fk",
+          "tableFrom": "monitor_notifications",
+          "tableTo": "monitors",
+          "columnsFrom": [
+            "monitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "monitor_notifications_channel_id_notification_channels_id_fk": {
+          "name": "monitor_notifications_channel_id_notification_channels_id_fk",
+          "tableFrom": "monitor_notifications",
+          "tableTo": "notification_channels",
+          "columnsFrom": [
+            "channel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "monitor_notifications_monitor_id_channel_id_pk": {
+          "columns": [
+            "monitor_id",
+            "channel_id"
+          ],
+          "name": "monitor_notifications_monitor_id_channel_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "monitors": {
+      "name": "monitors",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tags": {
+          "name": "tags",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "interval": {
+          "name": "interval",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 60
+        },
+        "active": {
+          "name": "active",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "last_checked_at": {
+          "name": "last_checked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "next_check_at": {
+          "name": "next_check_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "observation_revision": {
+          "name": "observation_revision",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "last_status": {
+          "name": "last_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "reminder_interval_hours": {
+          "name": "reminder_interval_hours",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tolerance_failures": {
+          "name": "tolerance_failures",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "method": {
+          "name": "method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'GET'"
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "headers": {
+          "name": "headers",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "expected_status": {
+          "name": "expected_status",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 200
+        },
+        "follow_redirects": {
+          "name": "follow_redirects",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "timeout": {
+          "name": "timeout",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 30
+        },
+        "ip_version": {
+          "name": "ip_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'auto'"
+        },
+        "auth_type": {
+          "name": "auth_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'none'"
+        },
+        "auth_username": {
+          "name": "auth_username",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "auth_password": {
+          "name": "auth_password",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "auth_token": {
+          "name": "auth_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "heartbeat_interval": {
+          "name": "heartbeat_interval",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "heartbeat_grace": {
+          "name": "heartbeat_grace",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 30
+        },
+        "tolerance_missed": {
+          "name": "tolerance_missed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "surge_protection_limit": {
+          "name": "surge_protection_limit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ssl_check_enabled": {
+          "name": "ssl_check_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "ssl_status": {
+          "name": "ssl_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'unknown'"
+        },
+        "cache_booster": {
+          "name": "cache_booster",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "json_path": {
+          "name": "json_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "expected_value": {
+          "name": "expected_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cpu_threshold": {
+          "name": "cpu_threshold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ram_threshold": {
+          "name": "ram_threshold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "disk_threshold": {
+          "name": "disk_threshold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_metrics": {
+          "name": "last_metrics",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "dns_hostname": {
+          "name": "dns_hostname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "dns_record_type": {
+          "name": "dns_record_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": "'A'"
+        },
+        "dns_resolver_url": {
+          "name": "dns_resolver_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "dns_expected_ip": {
+          "name": "dns_expected_ip",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "history_revision": {
+          "name": "history_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "stats_day": {
+          "name": "stats_day",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "day_checks": {
+          "name": "day_checks",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "day_up_count": {
+          "name": "day_up_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "day_down_count": {
+          "name": "day_down_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "day_response_count": {
+          "name": "day_response_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "day_response_sum_ms": {
+          "name": "day_response_sum_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "day_response_min_ms": {
+          "name": "day_response_min_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "day_response_max_ms": {
+          "name": "day_response_max_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "idx_monitors_active": {
+          "name": "idx_monitors_active",
+          "columns": [
+            "active"
+          ],
+          "isUnique": false
+        },
+        "idx_monitors_status": {
+          "name": "idx_monitors_status",
+          "columns": [
+            "last_status"
+          ],
+          "isUnique": false
+        },
+        "idx_monitors_type": {
+          "name": "idx_monitors_type",
+          "columns": [
+            "type"
+          ],
+          "isUnique": false
+        },
+        "idx_monitors_updated": {
+          "name": "idx_monitors_updated",
+          "columns": [
+            "updated_at"
+          ],
+          "isUnique": false
+        },
+        "idx_monitors_active_next_check": {
+          "name": "idx_monitors_active_next_check",
+          "columns": [
+            "active",
+            "next_check_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "notification_channels": {
+      "name": "notification_channels",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "config": {
+          "name": "config",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "active": {
+          "name": "active",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "is_default": {
+          "name": "is_default",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "notification_deliveries": {
+      "name": "notification_deliveries",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "dedupe_key": {
+          "name": "dedupe_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "monitor_id": {
+          "name": "monitor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload": {
+          "name": "payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "remaining_channel_ids": {
+          "name": "remaining_channel_ids",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "delivered_count": {
+          "name": "delivered_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "state_applied": {
+          "name": "state_applied",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "claim_token": {
+          "name": "claim_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claim_until": {
+          "name": "claim_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "notification_deliveries_dedupe_key_unique": {
+          "name": "notification_deliveries_dedupe_key_unique",
+          "columns": [
+            "dedupe_key"
+          ],
+          "isUnique": true
+        },
+        "idx_notification_deliveries_due": {
+          "name": "idx_notification_deliveries_due",
+          "columns": [
+            "next_attempt_at",
+            "claim_until"
+          ],
+          "isUnique": false
+        },
+        "idx_notification_deliveries_monitor": {
+          "name": "idx_notification_deliveries_monitor",
+          "columns": [
+            "monitor_id",
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "notification_deliveries_monitor_id_monitors_id_fk": {
+          "name": "notification_deliveries_monitor_id_monitors_id_fk",
+          "tableFrom": "notification_deliveries",
+          "tableTo": "monitors",
+          "columnsFrom": [
+            "monitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "notification_test_runs": {
+      "name": "notification_test_runs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "latency_ms": {
+          "name": "latency_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "idx_notification_tests_channel_created": {
+          "name": "idx_notification_tests_channel_created",
+          "columns": [
+            "channel_id",
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "notification_test_runs_channel_id_notification_channels_id_fk": {
+          "name": "notification_test_runs_channel_id_notification_channels_id_fk",
+          "tableFrom": "notification_test_runs",
+          "tableTo": "notification_channels",
+          "columnsFrom": [
+            "channel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "quota_budgets": {
+      "name": "quota_budgets",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "day": {
+          "name": "day",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "used": {
+          "name": "used",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "revoked_sessions": {
+      "name": "revoked_sessions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_revoked_sessions_expiry": {
+          "name": "idx_revoked_sessions_expiry",
+          "columns": [
+            "expires_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "scheduler_leases": {
+      "name": "scheduler_leases",
+      "columns": {
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "holder": {
+          "name": "holder",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_completed_at": {
+          "name": "last_completed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_run_failed": {
+          "name": "last_run_failed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "settings": {
+      "name": "settings",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "status_logs": {
+      "name": "status_logs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "monitor_id": {
+          "name": "monitor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "response_time_ms": {
+          "name": "response_time_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "checked_at": {
+          "name": "checked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "colo": {
+          "name": "colo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "country_code": {
+          "name": "country_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "origin_ip": {
+          "name": "origin_ip",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_sl_monitor_checked": {
+          "name": "idx_sl_monitor_checked",
+          "columns": [
+            "monitor_id",
+            "checked_at"
+          ],
+          "isUnique": false
+        },
+        "idx_sl_checked_at": {
+          "name": "idx_sl_checked_at",
+          "columns": [
+            "checked_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "status_logs_monitor_id_monitors_id_fk": {
+          "name": "status_logs_monitor_id_monitors_id_fk",
+          "tableFrom": "status_logs",
+          "tableTo": "monitors",
+          "columnsFrom": [
+            "monitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "status_page_monitors": {
+      "name": "status_page_monitors",
+      "columns": {
+        "page_id": {
+          "name": "page_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "monitor_id": {
+          "name": "monitor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "status_page_monitors_page_id_status_pages_id_fk": {
+          "name": "status_page_monitors_page_id_status_pages_id_fk",
+          "tableFrom": "status_page_monitors",
+          "tableTo": "status_pages",
+          "columnsFrom": [
+            "page_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "status_page_monitors_monitor_id_monitors_id_fk": {
+          "name": "status_page_monitors_monitor_id_monitors_id_fk",
+          "tableFrom": "status_page_monitors",
+          "tableTo": "monitors",
+          "columnsFrom": [
+            "monitor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "status_page_monitors_page_id_monitor_id_pk": {
+          "columns": [
+            "page_id",
+            "monitor_id"
+          ],
+          "name": "status_page_monitors_page_id_monitor_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "status_pages": {
+      "name": "status_pages",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "show_all_monitors": {
+          "name": "show_all_monitors",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "logo_url": {
+          "name": "logo_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "brand_color": {
+          "name": "brand_color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'#B45309'"
+        },
+        "theme": {
+          "name": "theme",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'system'"
+        },
+        "show_response_time": {
+          "name": "show_response_time",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "show_uptime": {
+          "name": "show_uptime",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "history_days": {
+          "name": "history_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 90
+        },
+        "seo_title": {
+          "name": "seo_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "seo_description": {
+          "name": "seo_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "status_pages_slug_unique": {
+          "name": "status_pages_slug_unique",
+          "columns": [
+            "slug"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}
