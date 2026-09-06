@@ -97,6 +97,43 @@ router.get('/detected', async (c) => {
   return c.json(rows)
 })
 
+// Load evidence only when an administrator opens an event. Each indexed log
+// lookup is bounded; never substitute the monitor's current status for history.
+router.get('/detected/:id', async (c) => {
+  const event = await c.env.DB.prepare(`SELECT i.id, i.monitor_id AS monitorId,
+    m.name AS monitorName, m.type AS monitorType, i.started_at AS startedAt,
+    i.resolved_at AS resolvedAt, i.duration_seconds AS durationSeconds
+    FROM incidents i JOIN monitors m ON m.id = i.monitor_id WHERE i.id = ?`)
+    .bind(c.req.param('id')).first<{
+      id: string; monitorId: string; monitorName: string; monitorType: string
+      startedAt: number; resolvedAt: number | null; durationSeconds: number | null
+    }>()
+  if (!event) return c.json({ error: 'Detected event not found' }, 404)
+  const observedAt = Math.floor(Date.now() / 1000)
+  const end = event.resolvedAt ?? observedAt
+  const projection = `id, status, message, checked_at AS checkedAt,
+    response_time_ms AS responseTimeMs`
+  const [before, during] = await Promise.all([
+    c.env.DB.prepare(`SELECT ${projection} FROM status_logs
+      WHERE monitor_id = ? AND checked_at <= ?
+        AND checked_at > COALESCE((SELECT MAX(resolved_at) FROM incidents
+          WHERE monitor_id = ? AND started_at < ? AND resolved_at IS NOT NULL), -1)
+      ORDER BY checked_at DESC, id DESC LIMIT 1`)
+      .bind(event.monitorId, event.startedAt, event.monitorId, event.startedAt).first(),
+    c.env.DB.prepare(`SELECT ${projection} FROM status_logs
+      WHERE monitor_id = ? AND checked_at > ? AND checked_at <= ?
+      ORDER BY checked_at ASC, id ASC LIMIT 51`)
+      .bind(event.monitorId, event.startedAt, end).all(),
+  ])
+  const recovery = event.resolvedAt === null ? null : await c.env.DB.prepare(`SELECT ${projection}
+    FROM status_logs WHERE monitor_id = ? AND checked_at >= ? AND checked_at <= ?
+    ORDER BY checked_at DESC, id DESC LIMIT 1`)
+    .bind(event.monitorId, event.startedAt, event.resolvedAt).first()
+  const evidence = [...(before?.status === 'down' ? [before] : []), ...during.results.slice(0, 50)]
+  return c.json({ ...event, observedAt, evidence, hasMore: during.results.length > 50,
+    recovery: recovery?.status === 'up' ? recovery : null })
+})
+
 router.post('/', async (c) => {
   const db = getDb(c.env.DB)
   const body = await readIncidentBody(c)

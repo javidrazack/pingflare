@@ -2,11 +2,18 @@
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-09-06
+
 ### Added
 - Capacity and scheduler health panel, bounded dashboard summaries, and projected demand when creating monitors
 - Notification delivery inbox, retry eligibility control, and 200 bounded provider acceptance receipts
 - Monitor maintenance controls with 4- or 12-occurrence weekly schedules in the displayed local timezone
 - Revocable 24-hour administrator sessions; credential changes invalidate sessions and refresh no longer extends them
+
+### Improved
+- Detected incidents now have a dedicated details page with failure and recovery messages, event timing, and expandable check evidence
+- Monitoring engine summary highlights late checks and capacity warnings, with limits, automatic check activity, and public-page usage available on demand
+- Clearer monitoring copy in English and Portuguese, responsive incident layouts, and a more visible back-to-incidents action
 
 ### Fixed
 - Docker SMTP cleanup, certificate validation, and credential leakage in authentication errors

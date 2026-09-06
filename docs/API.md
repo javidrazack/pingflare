@@ -295,3 +295,14 @@ explicit finite occurrences, not a background recurrence rule. See
 Monitor responses include `displayStatus` (`up`, `down`, `pending`, `stale`,
 `paused`) while preserving the recorded `lastStatus`. Public status responses
 use that effective state in `status` (or `lastStatus` on monitor detail).
+
+### Detected event details
+
+`GET /api/incidents/detected/:id` (administrator authentication required) returns
+an event's monitor name/type, detection and recovery times, duration, and retained
+check evidence. It includes the last failing observation at/before detection
+(after the preceding resolved incident), up to 50 following observations within
+the event, and the latest recovery observation when available. `hasMore` indicates
+truncation. `observedAt` timestamps the snapshot. No current monitor configuration
+or status is used to invent historical evidence. Missing or expired evidence is
+returned as an empty array/null; an unknown event returns 404.

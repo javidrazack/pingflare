@@ -147,6 +147,7 @@ export const api = {
   incidents: {
     list:      () => request<IncidentReport[]>('/incidents'),
     detected:  () => request<DetectedIncident[]>('/incidents/detected'),
+    detectedDetail: (id: string) => request<DetectedIncidentDetail>(`/incidents/detected/${encodeURIComponent(id)}`),
     get:       (id: string) => request<IncidentReport>(`/incidents/${id}`),
     create:    (data: { title: string; status: IncidentStatus; message?: string; monitorIds?: string[]; eventIds?: string[]; visibility?: IncidentVisibility; impact?: IncidentImpact }) =>
                  request<IncidentReport>('/incidents', { method: 'POST', body: JSON.stringify(data) }),
@@ -388,6 +389,21 @@ export interface DetectedIncident {
   startedAt: number
   resolvedAt: number | null
   durationSeconds: number | null
+}
+
+export interface EventEvidence {
+  id: string
+  status: 'up' | 'down' | 'pending'
+  message: string | null
+  checkedAt: number
+  responseTimeMs: number | null
+}
+export interface DetectedIncidentDetail extends DetectedIncident {
+  monitorType: string
+  observedAt: number
+  evidence: EventEvidence[]
+  hasMore: boolean
+  recovery: EventEvidence | null
 }
 
 export interface IncidentUpdate {

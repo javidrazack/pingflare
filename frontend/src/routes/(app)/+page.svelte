@@ -11,6 +11,8 @@
 
   type LoadState = 'loading' | 'ready' | 'error'
 
+  let engineWarning: string | null = null
+  let enginePanel: OperationsPanel
   let totals = { total: 0, up: 0, down: 0, pending: 0, stale: 0 }
   let watchlist: MonitorSummary[] = []
   let currentState: LoadState = 'loading'
@@ -161,7 +163,7 @@
   $: down = totals.down
   $: pending = totals.pending
   $: stale = totals.stale
-  $: allUp = up > 0 && down === 0 && pending === 0 && stale === 0 && currentState === 'ready'
+  $: allUp = up > 0 && down === 0 && pending === 0 && stale === 0 && currentState === 'ready' && !engineWarning
   $: attention = $monitors
 
   $: downLabel    = `${nMonitors($locale, down)} ${$t('dashboard.down').toLowerCase()}`
@@ -197,6 +199,8 @@
               <span class="w-1.5 h-1.5 rounded-full inline-block" style="background: var(--danger-fg)"></span>
               {downLabel}
             </span>
+          {:else if engineWarning}
+            <span class="badge badge-warning mb-2">{$t('ops.needsAttention')}</span>
           {:else if stale > 0}
             <span class="badge badge-pending mb-2">{$t('dashboard.staleCount', { count: stale })}</span>
           {:else if pending > 0}
@@ -418,6 +422,13 @@
             <h2 class="text-lg font-semibold" style="color: rgb(var(--text))">{$t('dashboard.needsAttention')}</h2>
             <a href="/monitors" class="btn-ghost">{$t('dashboard.viewMonitors')}</a>
           </div>
+          {#if engineWarning}
+            <div class="card space-y-2" role="status" style="background: rgb(var(--warning-bg)); color: var(--warning-fg)">
+              <p class="font-semibold">{$t('ops.needsAttention')}</p>
+              <p class="text-sm">{$t(engineWarning as Parameters<typeof $t>[0])}</p>
+              <a class="btn-outline" href="#monitoring-engine" on:click={() => enginePanel?.reveal()}>{$t('ops.inspectEngine')}</a>
+            </div>
+          {/if}
           {#if down + pending + stale > attention.length}
             <p class="text-sm" style="color: rgb(var(--text-muted))">{$t('dashboard.attentionLimit')}</p>
           {/if}
@@ -425,7 +436,7 @@
             {#each attention as monitor (monitor.id)}
               <MonitorCard {monitor} uptime={uptimes[monitor.id] ?? null} />
             {/each}
-          {:else}
+          {:else if !engineWarning}
             <div class="all-clear-panel card flex items-center gap-3">
               <div class="flex h-10 w-10 items-center justify-center rounded-full badge-up">
                 <Icon name="check-circle" size={20} />
@@ -478,7 +489,7 @@
       {/if}
     {/if}
 
-    <OperationsPanel />
+    <OperationsPanel bind:this={enginePanel} on:health={(event) => engineWarning = event.detail.warning} />
   </div>
 </div>
 

@@ -323,7 +323,7 @@
             <article class="card flex flex-col gap-4 sm:flex-row sm:items-center">
               <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-center gap-2">
-                  <h2 class="font-semibold">{event.monitorName}</h2>
+                  <h2 class="min-w-0 break-words font-semibold"><a class="hover:underline underline-offset-4" href="/incidents/detected/{encodeURIComponent(event.id)}">{event.monitorName}</a></h2>
                   <span class="badge {event.resolvedAt ? 'badge-up' : 'badge-down'}">{event.resolvedAt ? $t('incidents.recovered') : $t('incidents.ongoing')}</span>
                 </div>
                 <p class="mt-1 text-sm" style="color: rgb(var(--text-muted))">
@@ -331,9 +331,14 @@
                   {#if event.durationSeconds} · {$t('incidents.durationMinutes', { minutes: Math.max(1, Math.round(event.durationSeconds / 60)) })}{/if}
                 </p>
               </div>
-              <button class="btn-primary shrink-0" on:click={() => reportDetected(event)}>
+              <div class="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:shrink-0">
+              <a class="btn-outline flex-1 sm:flex-none" href="/incidents/detected/{encodeURIComponent(event.id)}" aria-label={$t('event.viewNamed', { name: event.monitorName })}>
+                {$t('event.view')}
+              </a>
+              <button class="btn-outline flex-1 sm:flex-none" on:click={() => reportDetected(event)}>
                 {$t('incidents.createReport')}
               </button>
+              </div>
             </article>
           {/each}
         </div>
